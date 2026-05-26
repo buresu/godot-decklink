@@ -1,10 +1,10 @@
-#include "decklink_memory_video_frame.hpp"
+#include "decklink_video_frame.hpp"
 
 #include "decklink_common.hpp"
 
 using namespace godot;
 
-DeckLinkMemoryVideoFrame::DeckLinkMemoryVideoFrame(int p_width, int p_height, BMDPixelFormat p_format) {
+DeckLinkVideoFrame::DeckLinkVideoFrame(int p_width, int p_height, BMDPixelFormat p_format) {
     _ref_count.init();
     _width = p_width;
     _height = p_height;
@@ -13,7 +13,7 @@ DeckLinkMemoryVideoFrame::DeckLinkMemoryVideoFrame(int p_width, int p_height, BM
     _data.resize(_row_bytes * _height);
 }
 
-HRESULT DeckLinkMemoryVideoFrame::QueryInterface(REFIID p_iid, LPVOID *r_ppv) {
+HRESULT DeckLinkVideoFrame::QueryInterface(REFIID p_iid, LPVOID *r_ppv) {
     if (!r_ppv) {
         return E_INVALIDARG;
     }
@@ -31,11 +31,11 @@ HRESULT DeckLinkMemoryVideoFrame::QueryInterface(REFIID p_iid, LPVOID *r_ppv) {
     return S_OK;
 }
 
-ULONG DeckLinkMemoryVideoFrame::AddRef() {
+ULONG DeckLinkVideoFrame::AddRef() {
     return _ref_count.refval();
 }
 
-ULONG DeckLinkMemoryVideoFrame::Release() {
+ULONG DeckLinkVideoFrame::Release() {
     const ULONG count = _ref_count.unrefval();
     if (count == 0) {
         delete this;
@@ -43,41 +43,41 @@ ULONG DeckLinkMemoryVideoFrame::Release() {
     return count;
 }
 
-long DeckLinkMemoryVideoFrame::GetWidth() {
+long DeckLinkVideoFrame::GetWidth() {
     return _width;
 }
 
-long DeckLinkMemoryVideoFrame::GetHeight() {
+long DeckLinkVideoFrame::GetHeight() {
     return _height;
 }
 
-long DeckLinkMemoryVideoFrame::GetRowBytes() {
+long DeckLinkVideoFrame::GetRowBytes() {
     return _row_bytes;
 }
 
-BMDPixelFormat DeckLinkMemoryVideoFrame::GetPixelFormat() {
+BMDPixelFormat DeckLinkVideoFrame::GetPixelFormat() {
     return _format;
 }
 
-BMDFrameFlags DeckLinkMemoryVideoFrame::GetFlags() {
+BMDFrameFlags DeckLinkVideoFrame::GetFlags() {
     return bmdFrameFlagDefault;
 }
 
-HRESULT DeckLinkMemoryVideoFrame::GetTimecode(BMDTimecodeFormat p_format, IDeckLinkTimecode **r_timecode) {
+HRESULT DeckLinkVideoFrame::GetTimecode(BMDTimecodeFormat p_format, IDeckLinkTimecode **r_timecode) {
     if (r_timecode) {
         *r_timecode = nullptr;
     }
     return E_NOINTERFACE;
 }
 
-HRESULT DeckLinkMemoryVideoFrame::GetAncillaryData(IDeckLinkVideoFrameAncillary **r_ancillary) {
+HRESULT DeckLinkVideoFrame::GetAncillaryData(IDeckLinkVideoFrameAncillary **r_ancillary) {
     if (r_ancillary) {
         *r_ancillary = nullptr;
     }
     return E_NOINTERFACE;
 }
 
-HRESULT DeckLinkMemoryVideoFrame::GetBytes(void **r_buffer) {
+HRESULT DeckLinkVideoFrame::GetBytes(void **r_buffer) {
     if (!r_buffer) {
         return E_INVALIDARG;
     }
@@ -85,7 +85,7 @@ HRESULT DeckLinkMemoryVideoFrame::GetBytes(void **r_buffer) {
     return S_OK;
 }
 
-HRESULT DeckLinkMemoryVideoFrame::GetSize(uint64_t *r_size) {
+HRESULT DeckLinkVideoFrame::GetSize(uint64_t *r_size) {
     if (!r_size) {
         return E_INVALIDARG;
     }
@@ -93,18 +93,18 @@ HRESULT DeckLinkMemoryVideoFrame::GetSize(uint64_t *r_size) {
     return S_OK;
 }
 
-HRESULT DeckLinkMemoryVideoFrame::StartAccess(BMDBufferAccessFlags p_flags) {
+HRESULT DeckLinkVideoFrame::StartAccess(BMDBufferAccessFlags p_flags) {
     return S_OK;
 }
 
-HRESULT DeckLinkMemoryVideoFrame::EndAccess(BMDBufferAccessFlags p_flags) {
+HRESULT DeckLinkVideoFrame::EndAccess(BMDBufferAccessFlags p_flags) {
     return S_OK;
 }
 
-const uint8_t *DeckLinkMemoryVideoFrame::data() const {
+const uint8_t *DeckLinkVideoFrame::data() const {
     return _data.ptr();
 }
 
-int DeckLinkMemoryVideoFrame::size() const {
+int DeckLinkVideoFrame::size() const {
     return (int)_data.size();
 }

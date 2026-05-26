@@ -8,9 +8,9 @@
 
 namespace godot {
 
-class DeckLinkMemoryVideoFrame : public IDeckLinkVideoFrame, public IDeckLinkVideoBuffer {
+class DeckLinkVideoFrame : public IDeckLinkVideoFrame, public IDeckLinkVideoBuffer {
 public:
-    DeckLinkMemoryVideoFrame(int p_width, int p_height, BMDPixelFormat p_format);
+    DeckLinkVideoFrame(int p_width, int p_height, BMDPixelFormat p_format);
 
     HRESULT QueryInterface(REFIID p_iid, LPVOID *r_ppv) override;
     ULONG AddRef() override;
@@ -33,7 +33,7 @@ public:
     int size() const;
 
 protected:
-    ~DeckLinkMemoryVideoFrame() override = default;
+    ~DeckLinkVideoFrame() override = default;
 
 private:
     SafeRefCount _ref_count;
