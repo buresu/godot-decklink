@@ -1,5 +1,6 @@
 #include "decklink_input.hpp"
 
+#include <godot_cpp/classes/os.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/mutex_lock.hpp>
 #include <godot_cpp/variant/array.hpp>
@@ -207,6 +208,7 @@ bool DeckLinkInput::open(int p_device, int64_t p_display_mode) {
     {
         MutexLock lock(*_frame_mutex);
         _latest_rgba.resize(_width * _height * 4);
+        decklink::safe_release(_pending_frame);
         _has_frame = false;
         _texture_dirty = false;
     }
@@ -228,6 +230,8 @@ bool DeckLinkInput::open(int p_device, int64_t p_display_mode) {
         return false;
     }
 
+    _start_input_thread();
+
     result = _decklink_input->StartStreams();
     if (result != S_OK) {
         UtilityFunctions::printerr("[DeckLinkInput] StartStreams failed: ", (int64_t)result);
@@ -247,10 +251,13 @@ void DeckLinkInput::close() {
         _decklink_input->SetCallback(nullptr);
     }
 
+    _stop_input_thread();
+
     decklink::safe_release(_decklink_input);
     _decklink_device.unref();
 
     MutexLock lock(*_frame_mutex);
+    decklink::safe_release(_pending_frame);
     _latest_rgba.clear();
     _has_frame = false;
     _texture_dirty = false;
@@ -346,6 +353,7 @@ HRESULT DeckLinkInput::VideoInputFormatChanged(BMDVideoInputFormatChangedEvents 
         {
             MutexLock lock(*_frame_mutex);
             _latest_rgba.resize(_width * _height * 4);
+            decklink::safe_release(_pending_frame);
             _has_frame = false;
             _texture_dirty = false;
         }
@@ -432,6 +440,83 @@ String DeckLinkInput::_get_display_mode_hint_string() const {
     return hint;
 }
 
+void DeckLinkInput::_input_thread_loop() {
+    OS *os = OS::get_singleton();
+    while (!_is_input_thread_stop_requested()) {
+        IDeckLinkVideoInputFrame *frame = nullptr;
+        {
+            MutexLock lock(*_frame_mutex);
+            frame = _pending_frame;
+            _pending_frame = nullptr;
+        }
+
+        if (frame) {
+            PackedByteArray rgba;
+            if (copy_frame_to_rgba(frame, rgba)) {
+                MutexLock lock(*_frame_mutex);
+                _width = frame->GetWidth();
+                _height = frame->GetHeight();
+                _latest_rgba = rgba;
+                _has_frame = true;
+                _texture_dirty = true;
+            } else {
+                UtilityFunctions::printerr("[DeckLinkInput] Could not convert frame to RGBA: pixel_format=", (int64_t)frame->GetPixelFormat());
+            }
+            frame->Release();
+        } else if (os) {
+            os->delay_usec(1000);
+        } else {
+            break;
+        }
+    }
+}
+
+void DeckLinkInput::_start_input_thread() {
+    if (_input_thread.is_valid() && _input_thread->is_started()) {
+        return;
+    }
+
+    {
+        MutexLock lock(*_frame_mutex);
+        _input_thread_stop_requested = false;
+    }
+
+    _input_thread.instantiate();
+    const Error error = _input_thread->start(callable_mp(this, &DeckLinkInput::_input_thread_loop), Thread::PRIORITY_HIGH);
+    if (error != OK) {
+        UtilityFunctions::printerr("[DeckLinkInput] Could not start input thread: ", (int64_t)error);
+        _input_thread.unref();
+    }
+}
+
+void DeckLinkInput::_stop_input_thread() {
+    if (_input_thread.is_null()) {
+        _clear_pending_frame();
+        return;
+    }
+
+    {
+        MutexLock lock(*_frame_mutex);
+        _input_thread_stop_requested = true;
+    }
+
+    if (_input_thread->is_started()) {
+        _input_thread->wait_to_finish();
+    }
+    _input_thread.unref();
+    _clear_pending_frame();
+}
+
+bool DeckLinkInput::_is_input_thread_stop_requested() const {
+    MutexLock lock(*_frame_mutex);
+    return _input_thread_stop_requested;
+}
+
+void DeckLinkInput::_clear_pending_frame() {
+    MutexLock lock(*_frame_mutex);
+    decklink::safe_release(_pending_frame);
+}
+
 void DeckLinkInput::_update_texture() {
     if (_texture.is_null()) {
         return;
@@ -472,16 +557,11 @@ HRESULT DeckLinkInput::VideoInputFrameArrived(IDeckLinkVideoInputFrame *p_video_
         return S_OK;
     }
 
-    PackedByteArray rgba;
-    if (copy_frame_to_rgba(p_video_frame, rgba)) {
+    {
         MutexLock lock(*_frame_mutex);
-        _width = p_video_frame->GetWidth();
-        _height = p_video_frame->GetHeight();
-        _latest_rgba = rgba;
-        _has_frame = true;
-        _texture_dirty = true;
-    } else {
-        UtilityFunctions::printerr("[DeckLinkInput] Could not convert frame to RGBA: pixel_format=", (int64_t)p_video_frame->GetPixelFormat());
+        decklink::safe_release(_pending_frame);
+        _pending_frame = p_video_frame;
+        _pending_frame->AddRef();
     }
     return S_OK;
 }

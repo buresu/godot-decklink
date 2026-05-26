@@ -4,6 +4,7 @@
 #include <godot_cpp/classes/image_texture.hpp>
 #include <godot_cpp/classes/mutex.hpp>
 #include <godot_cpp/classes/node.hpp>
+#include <godot_cpp/classes/thread.hpp>
 #include <godot_cpp/core/property_info.hpp>
 #include <godot_cpp/templates/safe_refcount.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
@@ -52,6 +53,11 @@ protected:
     static void _bind_methods();
 
 private:
+    void _input_thread_loop();
+    void _start_input_thread();
+    void _stop_input_thread();
+    bool _is_input_thread_stop_requested() const;
+    void _clear_pending_frame();
     void _update_texture();
     void _restart_if_enabled();
     String _get_device_hint_string() const;
@@ -69,6 +75,9 @@ private:
     bool _open = false;
     bool _enabled = false;
     mutable Mutex *_frame_mutex = nullptr;
+    bool _input_thread_stop_requested = false;
+    Ref<Thread> _input_thread;
+    IDeckLinkVideoInputFrame *_pending_frame = nullptr;
     PackedByteArray _latest_rgba;
     Ref<ImageTexture> _texture;
     bool _has_frame = false;
