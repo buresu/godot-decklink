@@ -42,6 +42,8 @@ private:
     IDeckLinkInput *_input = nullptr;
     IDeckLinkVideoConversion *_converter = nullptr;
     BMDDisplayMode _display_mode = bmdModeHD1080p5994;
+    BMDPixelFormat _pixel_format = bmdFormat8BitYUV;
+    BMDVideoInputFlags _input_flags = bmdVideoInputFlagDefault;
     int _width = 0;
     int _height = 0;
     bool _open = false;

@@ -39,6 +39,7 @@ private:
     IDeckLink *_device = nullptr;
     IDeckLinkOutput *_output = nullptr;
     BMDDisplayMode _display_mode = bmdModeHD1080p5994;
+    BMDPixelFormat _pixel_format = bmdFormat8BitBGRA;
     BMDTimeValue _frame_duration = 1001;
     BMDTimeScale _time_scale = 60000;
     BMDTimeValue _next_frame_time = 0;

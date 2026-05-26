@@ -10,6 +10,22 @@
 
 using namespace godot;
 
+static uint8_t clamp_u8(int p_value) {
+    if (p_value < 0) {
+        return 0;
+    }
+    if (p_value > 255) {
+        return 255;
+    }
+    return (uint8_t)p_value;
+}
+
+static void rgb_to_yuv(uint8_t p_r, uint8_t p_g, uint8_t p_b, uint8_t &r_y, uint8_t &r_u, uint8_t &r_v) {
+    r_y = clamp_u8(((66 * p_r + 129 * p_g + 25 * p_b + 128) >> 8) + 16);
+    r_u = clamp_u8(((-38 * p_r - 74 * p_g + 112 * p_b + 128) >> 8) + 128);
+    r_v = clamp_u8(((112 * p_r - 94 * p_g - 18 * p_b + 128) >> 8) + 128);
+}
+
 DeckLinkOutput::DeckLinkOutput() = default;
 
 DeckLinkOutput::~DeckLinkOutput() {
@@ -68,13 +84,21 @@ bool DeckLinkOutput::open(int p_device_index, int64_t p_display_mode) {
 
     _display_mode = (BMDDisplayMode)p_display_mode;
 
-    bool supported = false;
+    bool supported_bgra = false;
+    bool supported_yuv = false;
     BMDDisplayMode actual_mode = bmdModeUnknown;
-    if (_output->DoesSupportVideoMode(bmdVideoConnectionUnspecified, _display_mode, bmdFormat8BitBGRA, bmdNoVideoOutputConversion, bmdSupportedVideoModeDefault, &actual_mode, &supported) != S_OK || !supported) {
-        UtilityFunctions::printerr("[DeckLinkOutput] Display mode or BGRA output is not supported.");
+    _output->DoesSupportVideoMode(bmdVideoConnectionUnspecified, _display_mode, bmdFormat8BitBGRA, bmdNoVideoOutputConversion, bmdSupportedVideoModeDefault, &actual_mode, &supported_bgra);
+    if (!supported_bgra) {
+        _output->DoesSupportVideoMode(bmdVideoConnectionUnspecified, _display_mode, bmdFormat8BitYUV, bmdNoVideoOutputConversion, bmdSupportedVideoModeDefault, &actual_mode, &supported_yuv);
+    }
+
+    if (!supported_bgra && !supported_yuv) {
+        UtilityFunctions::printerr("[DeckLinkOutput] Display mode is not supported for BGRA or YUV output.");
         close();
         return false;
     }
+
+    _pixel_format = supported_bgra ? bmdFormat8BitBGRA : bmdFormat8BitYUV;
     if (actual_mode != bmdModeUnknown) {
         _display_mode = actual_mode;
     }
@@ -89,9 +113,9 @@ bool DeckLinkOutput::open(int p_device_index, int64_t p_display_mode) {
     mode->GetFrameRate(&_frame_duration, &_time_scale);
     mode->Release();
 
-    if (_output->SetScheduledFrameCompletionCallback(this) != S_OK ||
-            _output->EnableVideoOutput(_display_mode, bmdVideoOutputFlagDefault) != S_OK ||
-            _output->StartScheduledPlayback(0, _time_scale, 1.0) != S_OK) {
+    HRESULT result = _output->EnableVideoOutput(_display_mode, bmdVideoOutputFlagDefault);
+    if (result != S_OK) {
+        UtilityFunctions::printerr("[DeckLinkOutput] EnableVideoOutput failed: ", (int64_t)result);
         close();
         return false;
     }
@@ -103,9 +127,7 @@ bool DeckLinkOutput::open(int p_device_index, int64_t p_display_mode) {
 
 void DeckLinkOutput::close() {
     if (_output) {
-        _output->StopScheduledPlayback(0, nullptr, _time_scale);
         _output->DisableVideoOutput();
-        _output->SetScheduledFrameCompletionCallback(nullptr);
     }
 
     decklink::safe_release(_output);
@@ -144,8 +166,12 @@ bool DeckLinkOutput::output_image(const Ref<Image> &p_image) {
     PackedByteArray data = image->get_data();
     const uint8_t *src = data.ptr();
 
+    const int row_bytes = _pixel_format == bmdFormat8BitBGRA ? _width * 4 : _width * 2;
+
     IDeckLinkMutableVideoFrame *frame = nullptr;
-    if (_output->CreateVideoFrame(_width, _height, _width * 4, bmdFormat8BitBGRA, bmdFrameFlagDefault, &frame) != S_OK || !frame) {
+    HRESULT result = _output->CreateVideoFrame(_width, _height, row_bytes, _pixel_format, bmdFrameFlagDefault, &frame);
+    if (result != S_OK || !frame) {
+        UtilityFunctions::printerr("[DeckLinkOutput] CreateVideoFrame failed: ", (int64_t)result);
         return false;
     }
 
@@ -157,21 +183,49 @@ bool DeckLinkOutput::output_image(const Ref<Image> &p_image) {
 
     void *frame_bytes = nullptr;
     bool ok = false;
-    if (buffer->StartAccess(bmdBufferAccessWrite) == S_OK && buffer->GetBytes(&frame_bytes) == S_OK && frame_bytes) {
+    bool access_started = false;
+    if (buffer->StartAccess(bmdBufferAccessWrite) == S_OK) {
+        access_started = true;
+    }
+    if (access_started && buffer->GetBytes(&frame_bytes) == S_OK && frame_bytes) {
         uint8_t *dst = static_cast<uint8_t *>(frame_bytes);
-        const int pixels = _width * _height;
-        for (int i = 0; i < pixels; ++i) {
-            dst[i * 4 + 0] = src[i * 4 + 2];
-            dst[i * 4 + 1] = src[i * 4 + 1];
-            dst[i * 4 + 2] = src[i * 4 + 0];
-            dst[i * 4 + 3] = src[i * 4 + 3];
+        if (_pixel_format == bmdFormat8BitBGRA) {
+            const int pixels = _width * _height;
+            for (int i = 0; i < pixels; ++i) {
+                dst[i * 4 + 0] = src[i * 4 + 2];
+                dst[i * 4 + 1] = src[i * 4 + 1];
+                dst[i * 4 + 2] = src[i * 4 + 0];
+                dst[i * 4 + 3] = src[i * 4 + 3];
+            }
+        } else {
+            for (int y = 0; y < _height; ++y) {
+                const uint8_t *src_row = src + y * _width * 4;
+                uint8_t *dst_row = dst + y * row_bytes;
+                for (int x = 0; x + 1 < _width; x += 2) {
+                    uint8_t y0 = 0;
+                    uint8_t u0 = 0;
+                    uint8_t v0 = 0;
+                    uint8_t y1 = 0;
+                    uint8_t u1 = 0;
+                    uint8_t v1 = 0;
+                    rgb_to_yuv(src_row[x * 4 + 0], src_row[x * 4 + 1], src_row[x * 4 + 2], y0, u0, v0);
+                    rgb_to_yuv(src_row[(x + 1) * 4 + 0], src_row[(x + 1) * 4 + 1], src_row[(x + 1) * 4 + 2], y1, u1, v1);
+                    dst_row[x * 2 + 0] = (uint8_t)(((int)u0 + (int)u1) / 2);
+                    dst_row[x * 2 + 1] = y0;
+                    dst_row[x * 2 + 2] = (uint8_t)(((int)v0 + (int)v1) / 2);
+                    dst_row[x * 2 + 3] = y1;
+                }
+            }
         }
-        ok = _output->ScheduleVideoFrame(frame, _next_frame_time, _frame_duration, _time_scale) == S_OK;
-        if (ok) {
-            _next_frame_time += _frame_duration;
+        result = _output->DisplayVideoFrameSync(frame);
+        ok = result == S_OK;
+        if (!ok) {
+            UtilityFunctions::printerr("[DeckLinkOutput] DisplayVideoFrameSync failed: ", (int64_t)result);
         }
     }
-    buffer->EndAccess(bmdBufferAccessWrite);
+    if (access_started) {
+        buffer->EndAccess(bmdBufferAccessWrite);
+    }
     buffer->Release();
     frame->Release();
     return ok;

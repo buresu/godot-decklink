@@ -263,16 +263,24 @@ func _send_output_frame() -> void:
 	if width <= 0 or height <= 0:
 		return
 
-	var image := Image.create_empty(width, height, false, Image.FORMAT_RGBA8)
+	var data := PackedByteArray()
+	data.resize(width * height * 4)
 	var stripe_width: int = max(1, width / 8)
 	var offset: int = _output_frame % max(1, width)
 
 	for y in height:
 		for x in width:
 			var band := int((x + offset) / stripe_width) % 8
-			image.set_pixel(x, y, _pattern_color(band, x, y, width, height))
+			var base := (y * width + x) * 4
+			var rgba := _pattern_rgba(band, x, y)
+			data[base + 0] = rgba[0]
+			data[base + 1] = rgba[1]
+			data[base + 2] = rgba[2]
+			data[base + 3] = 255
 
-	_output.output_image(image)
+	var image := Image.create_from_data(width, height, false, Image.FORMAT_RGBA8, data)
+	if not _output.output_image(image):
+		_status_label.text = "Output frame failed"
 	_output_frame += 3
 
 func _stop_input() -> void:
@@ -321,19 +329,19 @@ func _mode_label(mode: Dictionary) -> String:
 		float(mode.get("fps", 0.0)),
 	]
 
-func _pattern_color(band: int, x: int, y: int, width: int, height: int) -> Color:
+func _pattern_rgba(band: int, x: int, y: int) -> Array[int]:
 	var colors := [
-		Color.WHITE,
-		Color.YELLOW,
-		Color.CYAN,
-		Color.GREEN,
-		Color.MAGENTA,
-		Color.RED,
-		Color.BLUE,
-		Color.BLACK,
+		[255, 255, 255],
+		[255, 255, 0],
+		[0, 255, 255],
+		[0, 255, 0],
+		[255, 0, 255],
+		[255, 0, 0],
+		[0, 0, 255],
+		[0, 0, 0],
 	]
-	var color: Color = colors[band]
+	var color: Array = colors[band]
 	var marker := ((x / 32) + (y / 32) + (_output_frame / 12)) % 2
 	if marker == 0:
 		return color
-	return color.darkened(0.25)
+	return [int(color[0] * 0.75), int(color[1] * 0.75), int(color[2] * 0.75)]
