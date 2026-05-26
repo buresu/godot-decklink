@@ -279,10 +279,7 @@ func _send_output_frame() -> void:
 		for x in width:
 			var band := int((x + offset) / stripe_width) % 8
 			var base := (y * width + x) * 4
-			var rgba := _pattern_rgba(band, x, y)
-			data[base + 0] = rgba[0]
-			data[base + 1] = rgba[1]
-			data[base + 2] = rgba[2]
+			_write_pattern_rgba(data, base, band, x, y)
 			data[base + 3] = 255
 
 	var image := Image.create_from_data(width, height, false, Image.FORMAT_RGBA8, data)
@@ -336,19 +333,37 @@ func _mode_label(mode: Dictionary) -> String:
 		float(mode.get("fps", 0.0)),
 	]
 
-func _pattern_rgba(band: int, x: int, y: int) -> Array[int]:
-	var colors := [
-		[255, 255, 255],
-		[255, 255, 0],
-		[0, 255, 255],
-		[0, 255, 0],
-		[255, 0, 255],
-		[255, 0, 0],
-		[0, 0, 255],
-		[0, 0, 0],
-	]
-	var color: Array = colors[band]
+func _write_pattern_rgba(data: PackedByteArray, base: int, band: int, x: int, y: int) -> void:
+	var r := 0
+	var g := 0
+	var b := 0
+	match band:
+		0:
+			r = 255
+			g = 255
+			b = 255
+		1:
+			r = 255
+			g = 255
+		2:
+			g = 255
+			b = 255
+		3:
+			g = 255
+		4:
+			r = 255
+			b = 255
+		5:
+			r = 255
+		6:
+			b = 255
+
 	var marker := ((x / 32) + (y / 32) + (_output_frame / 12)) % 2
-	if marker == 0:
-		return color
-	return [int(color[0] * 0.75), int(color[1] * 0.75), int(color[2] * 0.75)]
+	if marker != 0:
+		r = int(r * 0.75)
+		g = int(g * 0.75)
+		b = int(b * 0.75)
+
+	data[base + 0] = r
+	data[base + 1] = g
+	data[base + 2] = b
