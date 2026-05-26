@@ -1,9 +1,10 @@
 #include "decklink_output.hpp"
 
 #include <godot_cpp/classes/image.hpp>
+#include <godot_cpp/classes/os.hpp>
 #include <godot_cpp/classes/rendering_server.hpp>
-#include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/core/class_db.hpp>
+#include <godot_cpp/core/mutex_lock.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
@@ -17,10 +18,13 @@ using namespace godot;
 
 DeckLinkOutput::DeckLinkOutput() {
     _ref_count.init();
+    _output_mutex = memnew(Mutex);
 }
 
 DeckLinkOutput::~DeckLinkOutput() {
     close();
+    memdelete(_output_mutex);
+    _output_mutex = nullptr;
 }
 
 void DeckLinkOutput::_bind_methods() {
@@ -170,13 +174,13 @@ bool DeckLinkOutput::open(int p_device, int64_t p_display_mode) {
         return false;
     }
 
-    _next_frame_time = 0;
-    _next_output_usec = 0;
     _open = true;
     return true;
 }
 
 void DeckLinkOutput::close() {
+    _stop_output_thread();
+
     if (_output) {
         _output->DisableVideoOutput();
     }
@@ -186,8 +190,11 @@ void DeckLinkOutput::close() {
     _open = false;
     _width = 0;
     _height = 0;
-    _next_frame_time = 0;
-    _next_output_usec = 0;
+    {
+        MutexLock lock(*_output_mutex);
+        _latest_rgba.clear();
+        _has_output_frame = false;
+    }
 }
 
 bool DeckLinkOutput::is_open() const {
@@ -202,26 +209,15 @@ int DeckLinkOutput::get_height() const {
     return _height;
 }
 
-bool DeckLinkOutput::_output_texture() {
-    if (!_open || !_output || _texture.is_null()) {
+bool DeckLinkOutput::_output_frame(const PackedByteArray &p_rgba) {
+    if (!_open || !_output || p_rgba.is_empty()) {
+        return false;
+    }
+    if (p_rgba.size() < _width * _height * 4) {
         return false;
     }
 
-    Ref<Image> texture_image = _texture->get_image();
-    if (texture_image.is_null()) {
-        return false;
-    }
-
-    Ref<Image> image = texture_image->duplicate();
-    if (image->get_width() != _width || image->get_height() != _height) {
-        image->resize(_width, _height);
-    }
-    if (image->get_format() != Image::FORMAT_RGBA8) {
-        image->convert(Image::FORMAT_RGBA8);
-    }
-
-    PackedByteArray data = image->get_data();
-    const uint8_t *src = data.ptr();
+    const uint8_t *src = p_rgba.ptr();
 
     const int row_bytes = _pixel_format == bmdFormat8BitBGRA ? _width * 4 : _width * 2;
 
@@ -294,6 +290,7 @@ void DeckLinkOutput::set_enabled(bool p_enabled) {
             _enabled = false;
             return;
         }
+        _start_output_thread();
         _connect_frame_post_draw();
     } else {
         _disconnect_frame_post_draw();
@@ -351,8 +348,8 @@ void DeckLinkOutput::set_output_format(OutputFormat p_output_format) {
 }
 
 void DeckLinkOutput::_on_frame_post_draw() {
-    if (_enabled && _should_output_now()) {
-        _output_texture();
+    if (_enabled) {
+        _capture_texture();
     }
 }
 
@@ -382,26 +379,6 @@ void DeckLinkOutput::_disconnect_frame_post_draw() {
     _frame_post_draw_connected = false;
 }
 
-bool DeckLinkOutput::_should_output_now() {
-    if (!_open || _time_scale == 0) {
-        return false;
-    }
-
-    Time *time = Time::get_singleton();
-    if (!time) {
-        return true;
-    }
-
-    const uint64_t now = time->get_ticks_usec();
-    if (_next_output_usec != 0 && now < _next_output_usec) {
-        return false;
-    }
-
-    const uint64_t frame_usec = (uint64_t)(_frame_duration * 1000000 / _time_scale);
-    _next_output_usec = now + frame_usec;
-    return true;
-}
-
 void DeckLinkOutput::_restart_if_enabled() {
     if (!_enabled) {
         return;
@@ -411,7 +388,106 @@ void DeckLinkOutput::_restart_if_enabled() {
     if (!open(_device, _display_mode)) {
         _disconnect_frame_post_draw();
         _enabled = false;
+        return;
     }
+    _start_output_thread();
+}
+
+void DeckLinkOutput::_capture_texture() {
+    if (!_open || _texture.is_null()) {
+        return;
+    }
+
+    Ref<Image> texture_image = _texture->get_image();
+    if (texture_image.is_null()) {
+        return;
+    }
+
+    Ref<Image> image = texture_image->duplicate();
+    if (image->get_width() != _width || image->get_height() != _height) {
+        image->resize(_width, _height);
+    }
+    if (image->get_format() != Image::FORMAT_RGBA8) {
+        image->convert(Image::FORMAT_RGBA8);
+    }
+
+    PackedByteArray rgba = image->get_data();
+    {
+        MutexLock lock(*_output_mutex);
+        _latest_rgba = rgba;
+        _has_output_frame = !_latest_rgba.is_empty();
+    }
+}
+
+void DeckLinkOutput::_output_thread_loop() {
+    const int64_t fallback_frame_usec = 16667;
+    int64_t frame_usec = fallback_frame_usec;
+    if (_time_scale != 0) {
+        frame_usec = (int64_t)(_frame_duration * 1000000 / _time_scale);
+        if (frame_usec <= 0) {
+            frame_usec = fallback_frame_usec;
+        }
+    }
+
+    OS *os = OS::get_singleton();
+    while (!_is_output_thread_stop_requested()) {
+        PackedByteArray rgba;
+        {
+            MutexLock lock(*_output_mutex);
+            if (_has_output_frame) {
+                rgba = _latest_rgba;
+            }
+        }
+
+        if (!rgba.is_empty()) {
+            _output_frame(rgba);
+        }
+
+        if (os) {
+            os->delay_usec((int32_t)frame_usec);
+        } else {
+            break;
+        }
+    }
+}
+
+void DeckLinkOutput::_start_output_thread() {
+    if (_output_thread.is_valid() && _output_thread->is_started()) {
+        return;
+    }
+
+    {
+        MutexLock lock(*_output_mutex);
+        _output_thread_stop_requested = false;
+    }
+
+    _output_thread.instantiate();
+    const Error error = _output_thread->start(callable_mp(this, &DeckLinkOutput::_output_thread_loop), Thread::PRIORITY_HIGH);
+    if (error != OK) {
+        UtilityFunctions::printerr("[DeckLinkOutput] Could not start output thread: ", (int64_t)error);
+        _output_thread.unref();
+    }
+}
+
+void DeckLinkOutput::_stop_output_thread() {
+    if (_output_thread.is_null()) {
+        return;
+    }
+
+    {
+        MutexLock lock(*_output_mutex);
+        _output_thread_stop_requested = true;
+    }
+
+    if (_output_thread->is_started()) {
+        _output_thread->wait_to_finish();
+    }
+    _output_thread.unref();
+}
+
+bool DeckLinkOutput::_is_output_thread_stop_requested() const {
+    MutexLock lock(*_output_mutex);
+    return _output_thread_stop_requested;
 }
 
 String DeckLinkOutput::_get_device_hint_string() const {

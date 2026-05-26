@@ -1,9 +1,12 @@
 #pragma once
 
+#include <godot_cpp/classes/mutex.hpp>
 #include <godot_cpp/classes/node.hpp>
+#include <godot_cpp/classes/thread.hpp>
 #include <godot_cpp/classes/texture2d.hpp>
 #include <godot_cpp/core/property_info.hpp>
 #include <godot_cpp/templates/safe_refcount.hpp>
+#include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/string.hpp>
 
 #include "decklink_common.hpp"
@@ -57,11 +60,15 @@ protected:
     static void _bind_methods();
 
 private:
-    bool _output_texture();
+    bool _output_frame(const PackedByteArray &p_rgba);
+    void _capture_texture();
+    void _output_thread_loop();
+    void _start_output_thread();
+    void _stop_output_thread();
     void _on_frame_post_draw();
     void _connect_frame_post_draw();
     void _disconnect_frame_post_draw();
-    bool _should_output_now();
+    bool _is_output_thread_stop_requested() const;
     void _restart_if_enabled();
     String _get_device_hint_string() const;
     String _get_display_mode_hint_string() const;
@@ -76,13 +83,16 @@ private:
     BMDPixelFormat _pixel_format = bmdFormat8BitBGRA;
     BMDTimeValue _frame_duration = 1001;
     BMDTimeScale _time_scale = 60000;
-    BMDTimeValue _next_frame_time = 0;
-    uint64_t _next_output_usec = 0;
     int _width = 0;
     int _height = 0;
     bool _open = false;
     bool _enabled = false;
     bool _frame_post_draw_connected = false;
+    bool _output_thread_stop_requested = false;
+    mutable Mutex *_output_mutex = nullptr;
+    Ref<Thread> _output_thread;
+    PackedByteArray _latest_rgba;
+    bool _has_output_frame = false;
     Ref<Texture2D> _texture;
 };
 
