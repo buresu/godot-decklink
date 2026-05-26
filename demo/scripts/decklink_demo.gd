@@ -6,6 +6,7 @@ var _decklink
 var _input
 var _output
 var _preview_texture: ImageTexture
+var _output_pattern_texture: ImageTexture
 var _output_time := 0.0
 var _output_frame := 0
 
@@ -21,6 +22,8 @@ var _preview: TextureRect
 var _device_info: TextEdit
 
 func _ready() -> void:
+	_input = get_node_or_null("DeckLinkInput")
+	_output = get_node_or_null("DeckLinkOutput")
 	_build_ui()
 	if Engine.has_singleton("DeckLink"):
 		_decklink = Engine.get_singleton("DeckLink")
@@ -40,12 +43,12 @@ func _process(delta: float) -> void:
 			else:
 				_preview_texture.update(image)
 
-	if _output != null and _output.is_open():
+	if _output != null and _output.is_sending():
 		_output_time += delta
 		var interval := 1.0 / OUTPUT_FPS
 		while _output_time >= interval:
 			_output_time -= interval
-			_send_output_frame()
+			_update_output_pattern_texture()
 
 func _build_ui() -> void:
 	var root := VBoxContainer.new()
@@ -127,6 +130,7 @@ func _refresh_devices() -> void:
 	_stop_output()
 	_preview.texture = null
 	_preview_texture = null
+	_output_pattern_texture = null
 
 	_device_select.clear()
 	_device_info.text = ""
@@ -189,10 +193,10 @@ func _fill_mode_select(select: OptionButton, modes: Array) -> void:
 		select.select(0)
 
 func _toggle_input() -> void:
-	if _input != null and _input.is_open():
+	if _input != null and _input.is_receiving():
 		_stop_input()
 		return
-	if _output != null and _output.is_open():
+	if _output != null and _output.is_sending():
 		_stop_output()
 
 	var device_index := _selected_device_index()
@@ -201,22 +205,23 @@ func _toggle_input() -> void:
 		_status_label.text = "Select an input device and mode"
 		return
 
-	_input = ClassDB.instantiate("DeckLinkInput")
 	if _input == null:
 		_status_label.text = "DeckLinkInput class is not available"
 		return
-	if _input.open(device_index, mode):
+	_input.device_index = device_index
+	_input.display_mode = mode
+	_input.receiving = true
+	if _input.is_open():
 		_input_button.text = "Stop Input"
 		_status_label.text = "Input started"
 	else:
-		_input = null
 		_status_label.text = "Input failed"
 
 func _toggle_output() -> void:
-	if _output != null and _output.is_open():
+	if _output != null and _output.is_sending():
 		_stop_output()
 		return
-	if _input != null and _input.is_open():
+	if _input != null and _input.is_receiving():
 		_stop_input()
 
 	var device_index := _selected_device_index()
@@ -225,21 +230,24 @@ func _toggle_output() -> void:
 		_status_label.text = "Select an output device and mode"
 		return
 
-	_output = ClassDB.instantiate("DeckLinkOutput")
 	if _output == null:
 		_status_label.text = "DeckLinkOutput class is not available"
 		return
-	if _output.open(device_index, mode):
+	_output.device_index = device_index
+	_output.display_mode = mode
+	_output.sending = true
+	if _output.is_open():
 		_output_button.text = "Stop Output Pattern"
 		_output_time = 0.0
 		_output_frame = 0
+		_output_pattern_texture = null
+		_update_output_pattern_texture()
 		_status_label.text = "Output pattern started"
 	else:
-		_output = null
 		_status_label.text = "Output failed"
 
 func _send_one_frame() -> void:
-	if _input != null and _input.is_open():
+	if _input != null and _input.is_receiving():
 		_stop_input()
 
 	if _output == null or not _output.is_open():
@@ -248,12 +256,12 @@ func _send_one_frame() -> void:
 		if device_index < 0 or mode == 0:
 			_status_label.text = "Select an output device and mode"
 			return
-		_output = ClassDB.instantiate("DeckLinkOutput")
 		if _output == null:
 			_status_label.text = "DeckLinkOutput class is not available"
 			return
+		_output.device_index = device_index
+		_output.display_mode = mode
 		if not _output.open(device_index, mode):
-			_output = null
 			_status_label.text = "Output failed"
 			return
 		_output_button.text = "Stop Output Pattern"
@@ -287,17 +295,49 @@ func _send_output_frame() -> void:
 		_status_label.text = "Output frame failed"
 	_output_frame += 3
 
+func _update_output_pattern_texture() -> void:
+	if _output == null or not _output.is_open():
+		return
+
+	var width: int = _output.get_width()
+	var height: int = _output.get_height()
+	if width <= 0 or height <= 0:
+		return
+
+	var image := _create_pattern_image(width, height)
+	if _output_pattern_texture == null or _output_pattern_texture.get_width() != width or _output_pattern_texture.get_height() != height:
+		_output_pattern_texture = ImageTexture.create_from_image(image)
+		_output.set_texture(_output_pattern_texture)
+	else:
+		_output_pattern_texture.update(image)
+	_output_frame += 3
+
+func _create_pattern_image(width: int, height: int) -> Image:
+	var data := PackedByteArray()
+	data.resize(width * height * 4)
+	var stripe_width: int = max(1, width / 8)
+	var offset: int = _output_frame % max(1, width)
+
+	for y in height:
+		for x in width:
+			var band := int((x + offset) / stripe_width) % 8
+			var base := (y * width + x) * 4
+			_write_pattern_rgba(data, base, band, x, y)
+			data[base + 3] = 255
+
+	return Image.create_from_data(width, height, false, Image.FORMAT_RGBA8, data)
+
 func _stop_input() -> void:
 	if _input != null:
-		_input.close()
-		_input = null
+		_input.receiving = false
 	if _input_button != null:
 		_input_button.text = "Start Input"
 
 func _stop_output() -> void:
 	if _output != null:
-		_output.close()
-		_output = null
+		_output.sending = false
+		_output.set_texture(null)
+	_output_pattern_texture = null
 	if _output_button != null:
 		_output_button.text = "Start Output Pattern"
 

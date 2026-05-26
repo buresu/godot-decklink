@@ -1,6 +1,10 @@
 #include "decklink_output.hpp"
 
+#include <godot_cpp/classes/rendering_server.hpp>
+#include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/core/class_db.hpp>
+#include <godot_cpp/variant/array.hpp>
+#include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
@@ -19,12 +23,47 @@ DeckLinkOutput::~DeckLinkOutput() {
 }
 
 void DeckLinkOutput::_bind_methods() {
+    BIND_ENUM_CONSTANT(OUTPUT_FORMAT_AUTO);
+    BIND_ENUM_CONSTANT(OUTPUT_FORMAT_BGRA);
+    BIND_ENUM_CONSTANT(OUTPUT_FORMAT_YUV);
+
     ClassDB::bind_method(D_METHOD("open", "device_index", "display_mode"), &DeckLinkOutput::open, DEFVAL((int64_t)bmdModeHD1080p5994));
     ClassDB::bind_method(D_METHOD("close"), &DeckLinkOutput::close);
     ClassDB::bind_method(D_METHOD("is_open"), &DeckLinkOutput::is_open);
     ClassDB::bind_method(D_METHOD("output_image", "image"), &DeckLinkOutput::output_image);
+    ClassDB::bind_method(D_METHOD("get_texture"), &DeckLinkOutput::get_texture);
+    ClassDB::bind_method(D_METHOD("set_texture", "texture"), &DeckLinkOutput::set_texture);
+    ClassDB::bind_method(D_METHOD("is_sending"), &DeckLinkOutput::is_sending);
+    ClassDB::bind_method(D_METHOD("set_sending", "sending"), &DeckLinkOutput::set_sending);
+    ClassDB::bind_method(D_METHOD("get_device_index"), &DeckLinkOutput::get_device_index);
+    ClassDB::bind_method(D_METHOD("set_device_index", "device_index"), &DeckLinkOutput::set_device_index);
+    ClassDB::bind_method(D_METHOD("get_display_mode"), &DeckLinkOutput::get_display_mode);
+    ClassDB::bind_method(D_METHOD("set_display_mode", "display_mode"), &DeckLinkOutput::set_display_mode);
+    ClassDB::bind_method(D_METHOD("get_output_connection"), &DeckLinkOutput::get_output_connection);
+    ClassDB::bind_method(D_METHOD("set_output_connection", "output_connection"), &DeckLinkOutput::set_output_connection);
+    ClassDB::bind_method(D_METHOD("get_output_format"), &DeckLinkOutput::get_output_format);
+    ClassDB::bind_method(D_METHOD("set_output_format", "output_format"), &DeckLinkOutput::set_output_format);
     ClassDB::bind_method(D_METHOD("get_width"), &DeckLinkOutput::get_width);
     ClassDB::bind_method(D_METHOD("get_height"), &DeckLinkOutput::get_height);
+
+    ClassDB::add_property("DeckLinkOutput",
+            { Variant::BOOL, "sending" },
+            "set_sending", "is_sending");
+    ClassDB::add_property("DeckLinkOutput",
+            { Variant::OBJECT, "texture", PROPERTY_HINT_RESOURCE_TYPE, "Texture2D" },
+            "set_texture", "get_texture");
+    ClassDB::add_property("DeckLinkOutput",
+            { Variant::INT, "device_index", PROPERTY_HINT_ENUM },
+            "set_device_index", "get_device_index");
+    ClassDB::add_property("DeckLinkOutput",
+            { Variant::INT, "display_mode", PROPERTY_HINT_ENUM },
+            "set_display_mode", "get_display_mode");
+    ClassDB::add_property("DeckLinkOutput",
+            { Variant::INT, "output_connection", PROPERTY_HINT_ENUM, "Unspecified:0,SDI:1,HDMI:2,Optical SDI:4,Component:8,Composite:16,S-Video:32" },
+            "set_output_connection", "get_output_connection");
+    ClassDB::add_property("DeckLinkOutput",
+            { Variant::INT, "output_format", PROPERTY_HINT_ENUM, "Auto,BGRA,YUV" },
+            "set_output_format", "get_output_format");
 }
 
 HRESULT DeckLinkOutput::QueryInterface(REFIID p_iid, LPVOID *r_ppv) {
@@ -48,8 +87,32 @@ ULONG DeckLinkOutput::Release() {
     return _ref_count.unrefval();
 }
 
+void DeckLinkOutput::_ready() {
+    if (_sending) {
+        set_sending(true);
+    }
+}
+
+void DeckLinkOutput::_exit_tree() {
+    _disconnect_frame_post_draw();
+    close();
+}
+
+void DeckLinkOutput::_validate_property(PropertyInfo &p_property) const {
+    const String name = p_property.name;
+    if (name == "device_index") {
+        p_property.hint = PROPERTY_HINT_ENUM;
+        p_property.hint_string = _get_device_hint_string();
+    } else if (name == "display_mode") {
+        p_property.hint = PROPERTY_HINT_ENUM;
+        p_property.hint_string = _get_display_mode_hint_string();
+    }
+}
+
 bool DeckLinkOutput::open(int p_device_index, int64_t p_display_mode) {
     close();
+    _device_index = p_device_index;
+    _display_mode = (BMDDisplayMode)p_display_mode;
 
     DeckLink *decklink = DeckLink::get_singleton();
     if (!decklink) {
@@ -67,18 +130,18 @@ bool DeckLinkOutput::open(int p_device_index, int64_t p_display_mode) {
         return false;
     }
 
-    _display_mode = (BMDDisplayMode)p_display_mode;
-
     bool supported_bgra = false;
     bool supported_yuv = false;
     BMDDisplayMode actual_mode = bmdModeUnknown;
-    _output->DoesSupportVideoMode(bmdVideoConnectionUnspecified, _display_mode, bmdFormat8BitBGRA, bmdNoVideoOutputConversion, bmdSupportedVideoModeDefault, &actual_mode, &supported_bgra);
-    if (!supported_bgra) {
-        _output->DoesSupportVideoMode(bmdVideoConnectionUnspecified, _display_mode, bmdFormat8BitYUV, bmdNoVideoOutputConversion, bmdSupportedVideoModeDefault, &actual_mode, &supported_yuv);
+    if (_output_format == OUTPUT_FORMAT_AUTO || _output_format == OUTPUT_FORMAT_BGRA) {
+        _output->DoesSupportVideoMode(_output_connection, _display_mode, bmdFormat8BitBGRA, bmdNoVideoOutputConversion, bmdSupportedVideoModeDefault, &actual_mode, &supported_bgra);
+    }
+    if (_output_format == OUTPUT_FORMAT_AUTO || _output_format == OUTPUT_FORMAT_YUV || !supported_bgra) {
+        _output->DoesSupportVideoMode(_output_connection, _display_mode, bmdFormat8BitYUV, bmdNoVideoOutputConversion, bmdSupportedVideoModeDefault, &actual_mode, &supported_yuv);
     }
 
     if (!supported_bgra && !supported_yuv) {
-        UtilityFunctions::printerr("[DeckLinkOutput] Display mode is not supported for BGRA or YUV output.");
+        UtilityFunctions::printerr("[DeckLinkOutput] Display mode is not supported for selected output format.");
         close();
         return false;
     }
@@ -109,6 +172,7 @@ bool DeckLinkOutput::open(int p_device_index, int64_t p_display_mode) {
     }
 
     _next_frame_time = 0;
+    _next_output_usec = 0;
     _open = true;
     return true;
 }
@@ -124,6 +188,7 @@ void DeckLinkOutput::close() {
     _width = 0;
     _height = 0;
     _next_frame_time = 0;
+    _next_output_usec = 0;
 }
 
 bool DeckLinkOutput::is_open() const {
@@ -204,6 +269,218 @@ bool DeckLinkOutput::output_image(const Ref<Image> &p_image) {
     buffer->Release();
     frame->Release();
     return ok;
+}
+
+bool DeckLinkOutput::_output_texture() {
+    if (_texture.is_null()) {
+        return false;
+    }
+
+    Ref<Image> image = _texture->get_image();
+    if (image.is_null()) {
+        return false;
+    }
+
+    return output_image(image);
+}
+
+Ref<Texture2D> DeckLinkOutput::get_texture() const {
+    return _texture;
+}
+
+void DeckLinkOutput::set_texture(Ref<Texture2D> p_texture) {
+    _texture = p_texture;
+}
+
+bool DeckLinkOutput::is_sending() const {
+    return _sending;
+}
+
+void DeckLinkOutput::set_sending(bool p_sending) {
+    _sending = p_sending;
+    if (_sending) {
+        if (!_open && !open(_device_index, _display_mode)) {
+            _sending = false;
+            return;
+        }
+        _connect_frame_post_draw();
+    } else {
+        _disconnect_frame_post_draw();
+        close();
+    }
+}
+
+int DeckLinkOutput::get_device_index() const {
+    return _device_index;
+}
+
+void DeckLinkOutput::set_device_index(int p_device_index) {
+    if (_device_index == p_device_index) {
+        return;
+    }
+    _device_index = p_device_index;
+    notify_property_list_changed();
+    _restart_if_sending();
+}
+
+int64_t DeckLinkOutput::get_display_mode() const {
+    return (int64_t)_display_mode;
+}
+
+void DeckLinkOutput::set_display_mode(int64_t p_display_mode) {
+    if (_display_mode == (BMDDisplayMode)p_display_mode) {
+        return;
+    }
+    _display_mode = (BMDDisplayMode)p_display_mode;
+    _restart_if_sending();
+}
+
+int64_t DeckLinkOutput::get_output_connection() const {
+    return (int64_t)_output_connection;
+}
+
+void DeckLinkOutput::set_output_connection(int64_t p_output_connection) {
+    if (_output_connection == (BMDVideoConnection)p_output_connection) {
+        return;
+    }
+    _output_connection = (BMDVideoConnection)p_output_connection;
+    _restart_if_sending();
+}
+
+DeckLinkOutput::OutputFormat DeckLinkOutput::get_output_format() const {
+    return _output_format;
+}
+
+void DeckLinkOutput::set_output_format(OutputFormat p_output_format) {
+    if (_output_format == p_output_format) {
+        return;
+    }
+    _output_format = p_output_format;
+    _restart_if_sending();
+}
+
+void DeckLinkOutput::_on_frame_post_draw() {
+    if (_sending && _should_output_now()) {
+        _output_texture();
+    }
+}
+
+void DeckLinkOutput::_connect_frame_post_draw() {
+    RenderingServer *rendering_server = RenderingServer::get_singleton();
+    if (!rendering_server || _frame_post_draw_connected) {
+        return;
+    }
+
+    Callable callable = callable_mp(this, &DeckLinkOutput::_on_frame_post_draw);
+    if (!rendering_server->is_connected("frame_post_draw", callable)) {
+        rendering_server->connect("frame_post_draw", callable);
+    }
+    _frame_post_draw_connected = true;
+}
+
+void DeckLinkOutput::_disconnect_frame_post_draw() {
+    RenderingServer *rendering_server = RenderingServer::get_singleton();
+    if (!rendering_server || !_frame_post_draw_connected) {
+        return;
+    }
+
+    Callable callable = callable_mp(this, &DeckLinkOutput::_on_frame_post_draw);
+    if (rendering_server->is_connected("frame_post_draw", callable)) {
+        rendering_server->disconnect("frame_post_draw", callable);
+    }
+    _frame_post_draw_connected = false;
+}
+
+bool DeckLinkOutput::_should_output_now() {
+    if (!_open || _time_scale == 0) {
+        return false;
+    }
+
+    Time *time = Time::get_singleton();
+    if (!time) {
+        return true;
+    }
+
+    const uint64_t now = time->get_ticks_usec();
+    if (_next_output_usec != 0 && now < _next_output_usec) {
+        return false;
+    }
+
+    const uint64_t frame_usec = (uint64_t)(_frame_duration * 1000000 / _time_scale);
+    _next_output_usec = now + frame_usec;
+    return true;
+}
+
+void DeckLinkOutput::_restart_if_sending() {
+    if (!_sending) {
+        return;
+    }
+
+    close();
+    if (!open(_device_index, _display_mode)) {
+        _disconnect_frame_post_draw();
+        _sending = false;
+    }
+}
+
+String DeckLinkOutput::_get_device_hint_string() const {
+    DeckLink *decklink = DeckLink::get_singleton();
+    if (!decklink) {
+        return "Device 0:0";
+    }
+
+    const Array devices = decklink->get_devices();
+    String hint;
+    for (int i = 0; i < devices.size(); ++i) {
+        const Dictionary device = devices[i];
+        String name = device.get("display_name", String());
+        if (name.is_empty()) {
+            name = device.get("model_name", String());
+        }
+        if (name.is_empty()) {
+            name = "Device " + String::num_int64(i);
+        }
+        name = name.replace(",", " ").replace(":", " ");
+
+        if (!hint.is_empty()) {
+            hint += ",";
+        }
+        hint += name + ":" + String::num_int64(i);
+    }
+
+    if (hint.is_empty()) {
+        hint = "Device 0:0";
+    }
+    return hint;
+}
+
+String DeckLinkOutput::_get_display_mode_hint_string() const {
+    DeckLink *decklink = DeckLink::get_singleton();
+    if (!decklink) {
+        return "1080p59.94:" + String::num_int64((int64_t)bmdModeHD1080p5994);
+    }
+
+    const Array modes = decklink->get_output_display_modes(_device_index);
+    String hint;
+    for (int i = 0; i < modes.size(); ++i) {
+        const Dictionary mode = modes[i];
+        String name = mode.get("name", String());
+        if (name.is_empty()) {
+            name = String::num_int64((int64_t)mode.get("width", 0)) + "x" + String::num_int64((int64_t)mode.get("height", 0));
+        }
+        name = name.replace(",", " ").replace(":", " ");
+
+        const int64_t id = mode.get("id", (int64_t)bmdModeHD1080p5994);
+        if (!hint.is_empty()) {
+            hint += ",";
+        }
+        hint += name + ":" + String::num_int64(id);
+    }
+
+    if (hint.is_empty()) {
+        hint = "1080p59.94:" + String::num_int64((int64_t)bmdModeHD1080p5994);
+    }
+    return hint;
 }
 
 HRESULT DeckLinkOutput::ScheduledFrameCompleted(IDeckLinkVideoFrame *p_completed_frame, BMDOutputFrameCompletionResult p_result) {
