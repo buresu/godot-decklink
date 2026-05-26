@@ -1,12 +1,14 @@
 #pragma once
 
 #include <godot_cpp/classes/object.hpp>
+#include <godot_cpp/classes/ref.hpp>
 #include <godot_cpp/templates/vector.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/string.hpp>
 
 #include "decklink_common.hpp"
+#include "decklink_device.hpp"
 
 namespace godot {
 
@@ -25,16 +27,15 @@ public:
     Array get_input_display_modes(int p_device_index) const;
     void refresh();
 
-    IDeckLink *get_device(int p_index) const;
+    Ref<DeckLinkDevice> get_device(int p_index) const;
 
 protected:
     static void _bind_methods();
 
 private:
     static DeckLink *_singleton;
-    Vector<IDeckLink *> _devices;
+    Vector<Ref<DeckLinkDevice>> _devices;
 
-    Array _get_display_modes(int p_device_index, bool p_output) const;
     void _clear_devices();
 };
 

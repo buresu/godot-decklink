@@ -6,6 +6,7 @@
 #include <godot_cpp/godot.hpp>
 
 #include "decklink.hpp"
+#include "decklink_device.hpp"
 #include "decklink_input.hpp"
 #include "decklink_output.hpp"
 
@@ -19,6 +20,7 @@ void initialize_godot_decklink_module(ModuleInitializationLevel p_level) {
     }
 
     GDREGISTER_CLASS(DeckLink);
+    GDREGISTER_CLASS(DeckLinkDevice);
     GDREGISTER_CLASS(DeckLinkOutput);
     GDREGISTER_CLASS(DeckLinkInput);
 

@@ -156,12 +156,11 @@ bool DeckLinkInput::open(int p_device, int64_t p_display_mode) {
     }
 
     _decklink_device = decklink->get_device(p_device);
-    if (!_decklink_device) {
+    if (_decklink_device.is_null()) {
         return false;
     }
-    _decklink_device->AddRef();
 
-    if (_decklink_device->QueryInterface(IID_IDeckLinkInput, (void **)&_decklink_input) != S_OK || !_decklink_input) {
+    if (!_decklink_device->query_input(&_decklink_input)) {
         close();
         return false;
     }
@@ -169,7 +168,7 @@ bool DeckLinkInput::open(int p_device, int64_t p_display_mode) {
     _input_flags = bmdVideoInputFlagDefault;
 
     IDeckLinkProfileAttributes *attributes = nullptr;
-    if (_decklink_device->QueryInterface(IID_IDeckLinkProfileAttributes, (void **)&attributes) == S_OK && attributes) {
+    if (_decklink_device->query_attributes(&attributes)) {
         bool supports_format_detection = false;
         if (attributes->GetFlag(BMDDeckLinkSupportsInputFormatDetection, &supports_format_detection) == S_OK && supports_format_detection) {
             _input_flags = bmdVideoInputEnableFormatDetection;
@@ -249,7 +248,7 @@ void DeckLinkInput::close() {
     }
 
     decklink::safe_release(_decklink_input);
-    decklink::safe_release(_decklink_device);
+    _decklink_device.unref();
 
     MutexLock lock(*_frame_mutex);
     _latest_rgba.clear();
@@ -405,7 +404,12 @@ String DeckLinkInput::_get_display_mode_hint_string() const {
         return "1080p59.94:" + String::num_int64((int64_t)bmdModeHD1080p5994);
     }
 
-    const Array modes = decklink->get_input_display_modes(_device);
+    Ref<DeckLinkDevice> device = decklink->get_device(_device);
+    if (device.is_null()) {
+        return "1080p59.94:" + String::num_int64((int64_t)bmdModeHD1080p5994);
+    }
+
+    const Array modes = device->get_input_display_modes();
     String hint;
     for (int i = 0; i < modes.size(); ++i) {
         const Dictionary mode = modes[i];

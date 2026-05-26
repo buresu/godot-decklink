@@ -10,6 +10,7 @@
 #include <godot_cpp/variant/string.hpp>
 
 #include "decklink_common.hpp"
+#include "decklink_device.hpp"
 
 namespace godot {
 
@@ -57,7 +58,7 @@ private:
     String _get_display_mode_hint_string() const;
 
     SafeRefCount _ref_count;
-    IDeckLink *_decklink_device = nullptr;
+    Ref<DeckLinkDevice> _decklink_device;
     IDeckLinkInput *_decklink_input = nullptr;
     int _device = 0;
     BMDDisplayMode _display_mode = bmdModeHD1080p5994;

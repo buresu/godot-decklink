@@ -131,9 +131,10 @@ func _refresh_devices() -> void:
 
 	var devices: Array = _decklink.get_devices()
 	for device in devices:
-		var label := "%d: %s" % [device.get("index", 0), _device_label(device)]
+		var index: int = int(device.get("index", 0))
+		var label := "%d: %s" % [index, _device_label(device)]
 		_device_select.add_item(label)
-		_device_select.set_item_metadata(_device_select.item_count - 1, device.get("index", 0))
+		_device_select.set_item_metadata(_device_select.item_count - 1, index)
 
 	_set_controls_enabled(not devices.is_empty())
 
@@ -157,15 +158,16 @@ func _load_modes_for_selected_device() -> void:
 	if device_index < 0:
 		return
 
-	_fill_mode_select(_input_mode_select, _decklink.get_input_display_modes(device_index))
-	_fill_mode_select(_output_mode_select, _decklink.get_output_display_modes(device_index))
+	var device = _decklink.get_device(device_index)
+	if device == null:
+		return
+
+	_fill_mode_select(_input_mode_select, device.get_input_display_modes())
+	_fill_mode_select(_output_mode_select, device.get_output_display_modes())
 
 	var device_lines: Array[String] = []
-	for device in _decklink.get_devices():
-		if int(device.get("index", -1)) == device_index:
-			device_lines.append("Device: %s" % _device_label(device))
-			device_lines.append("")
-			break
+	device_lines.append("Device: %s" % _decklink_device_label(device))
+	device_lines.append("")
 	device_lines.append("Input modes: %d" % _input_mode_select.item_count)
 	device_lines.append("Output modes: %d" % _output_mode_select.item_count)
 	_device_info.text = "\n".join(device_lines)
@@ -308,6 +310,12 @@ func _device_label(device: Dictionary) -> String:
 	if not display_name.is_empty():
 		return display_name
 	return str(device.get("model_name", "DeckLink"))
+
+func _decklink_device_label(device) -> String:
+	var display_name := str(device.get_display_name())
+	if not display_name.is_empty():
+		return display_name
+	return str(device.get_model_name())
 
 func _mode_label(mode: Dictionary) -> String:
 	return "%s  %dx%d  %.2f fps" % [

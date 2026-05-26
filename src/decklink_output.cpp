@@ -120,12 +120,11 @@ bool DeckLinkOutput::open(int p_device, int64_t p_display_mode) {
     }
 
     _decklink_device = decklink->get_device(p_device);
-    if (!_decklink_device) {
+    if (_decklink_device.is_null()) {
         return false;
     }
-    _decklink_device->AddRef();
 
-    if (_decklink_device->QueryInterface(IID_IDeckLinkOutput, (void **)&_output) != S_OK || !_output) {
+    if (!_decklink_device->query_output(&_output)) {
         close();
         return false;
     }
@@ -183,7 +182,7 @@ void DeckLinkOutput::close() {
     }
 
     decklink::safe_release(_output);
-    decklink::safe_release(_decklink_device);
+    _decklink_device.unref();
     _open = false;
     _width = 0;
     _height = 0;
@@ -452,7 +451,12 @@ String DeckLinkOutput::_get_display_mode_hint_string() const {
         return "1080p59.94:" + String::num_int64((int64_t)bmdModeHD1080p5994);
     }
 
-    const Array modes = decklink->get_output_display_modes(_device);
+    Ref<DeckLinkDevice> device = decklink->get_device(_device);
+    if (device.is_null()) {
+        return "1080p59.94:" + String::num_int64((int64_t)bmdModeHD1080p5994);
+    }
+
+    const Array modes = device->get_output_display_modes();
     String hint;
     for (int i = 0; i < modes.size(); ++i) {
         const Dictionary mode = modes[i];
