@@ -115,7 +115,10 @@ bool DeckLinkOutput::open(int p_device_index, int64_t p_display_mode) {
 
     HRESULT result = _output->EnableVideoOutput(_display_mode, bmdVideoOutputFlagDefault);
     if (result != S_OK) {
-        UtilityFunctions::printerr("[DeckLinkOutput] EnableVideoOutput failed: ", (int64_t)result);
+        UtilityFunctions::printerr("[DeckLinkOutput] EnableVideoOutput failed: ",
+                decklink::hresult_name(result),
+                " (", (int64_t)result, ") mode=", (int64_t)_display_mode,
+                " pixel_format=", (int64_t)_pixel_format);
         close();
         return false;
     }
@@ -220,7 +223,8 @@ bool DeckLinkOutput::output_image(const Ref<Image> &p_image) {
         result = _output->DisplayVideoFrameSync(frame);
         ok = result == S_OK;
         if (!ok) {
-            UtilityFunctions::printerr("[DeckLinkOutput] DisplayVideoFrameSync failed: ", (int64_t)result);
+            UtilityFunctions::printerr("[DeckLinkOutput] DisplayVideoFrameSync failed: ",
+                    decklink::hresult_name(result), " (", (int64_t)result, ")");
         }
     }
     if (access_started) {

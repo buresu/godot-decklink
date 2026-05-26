@@ -192,6 +192,8 @@ func _toggle_input() -> void:
 	if _input != null and _input.is_open():
 		_stop_input()
 		return
+	if _output != null and _output.is_open():
+		_stop_output()
 
 	var device_index := _selected_device_index()
 	var mode := _selected_mode(_input_mode_select)
@@ -214,6 +216,8 @@ func _toggle_output() -> void:
 	if _output != null and _output.is_open():
 		_stop_output()
 		return
+	if _input != null and _input.is_open():
+		_stop_input()
 
 	var device_index := _selected_device_index()
 	var mode := _selected_mode(_output_mode_select)
@@ -235,6 +239,9 @@ func _toggle_output() -> void:
 		_status_label.text = "Output failed"
 
 func _send_one_frame() -> void:
+	if _input != null and _input.is_open():
+		_stop_input()
+
 	if _output == null or not _output.is_open():
 		var device_index := _selected_device_index()
 		var mode := _selected_mode(_output_mode_select)
