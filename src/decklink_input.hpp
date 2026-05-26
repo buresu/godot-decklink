@@ -40,7 +40,6 @@ private:
     std::atomic<ULONG> _ref_count = 1;
     IDeckLink *_device = nullptr;
     IDeckLinkInput *_input = nullptr;
-    IDeckLinkVideoConversion *_converter = nullptr;
     BMDDisplayMode _display_mode = bmdModeHD1080p5994;
     BMDPixelFormat _pixel_format = bmdFormat8BitYUV;
     BMDVideoInputFlags _input_flags = bmdVideoInputFlagDefault;

@@ -4,27 +4,13 @@
 #include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
+#include <libyuv.h>
+
 #include "decklink.hpp"
 
 #include <cstring>
 
 using namespace godot;
-
-static uint8_t clamp_u8(int p_value) {
-    if (p_value < 0) {
-        return 0;
-    }
-    if (p_value > 255) {
-        return 255;
-    }
-    return (uint8_t)p_value;
-}
-
-static void rgb_to_yuv(uint8_t p_r, uint8_t p_g, uint8_t p_b, uint8_t &r_y, uint8_t &r_u, uint8_t &r_v) {
-    r_y = clamp_u8(((66 * p_r + 129 * p_g + 25 * p_b + 128) >> 8) + 16);
-    r_u = clamp_u8(((-38 * p_r - 74 * p_g + 112 * p_b + 128) >> 8) + 128);
-    r_v = clamp_u8(((112 * p_r - 94 * p_g - 18 * p_b + 128) >> 8) + 128);
-}
 
 DeckLinkOutput::DeckLinkOutput() = default;
 
@@ -192,39 +178,25 @@ bool DeckLinkOutput::output_image(const Ref<Image> &p_image) {
     }
     if (access_started && buffer->GetBytes(&frame_bytes) == S_OK && frame_bytes) {
         uint8_t *dst = static_cast<uint8_t *>(frame_bytes);
+        // Godot RGBA8 is ABGR in libyuv terms. DeckLink BGRA is libyuv ARGB.
         if (_pixel_format == bmdFormat8BitBGRA) {
-            const int pixels = _width * _height;
-            for (int i = 0; i < pixels; ++i) {
-                dst[i * 4 + 0] = src[i * 4 + 2];
-                dst[i * 4 + 1] = src[i * 4 + 1];
-                dst[i * 4 + 2] = src[i * 4 + 0];
-                dst[i * 4 + 3] = src[i * 4 + 3];
-            }
+            ok = libyuv::ABGRToARGB(src, _width * 4, dst, row_bytes, _width, _height) == 0;
         } else {
-            for (int y = 0; y < _height; ++y) {
-                const uint8_t *src_row = src + y * _width * 4;
-                uint8_t *dst_row = dst + y * row_bytes;
-                for (int x = 0; x + 1 < _width; x += 2) {
-                    uint8_t y0 = 0;
-                    uint8_t u0 = 0;
-                    uint8_t v0 = 0;
-                    uint8_t y1 = 0;
-                    uint8_t u1 = 0;
-                    uint8_t v1 = 0;
-                    rgb_to_yuv(src_row[x * 4 + 0], src_row[x * 4 + 1], src_row[x * 4 + 2], y0, u0, v0);
-                    rgb_to_yuv(src_row[(x + 1) * 4 + 0], src_row[(x + 1) * 4 + 1], src_row[(x + 1) * 4 + 2], y1, u1, v1);
-                    dst_row[x * 2 + 0] = (uint8_t)(((int)u0 + (int)u1) / 2);
-                    dst_row[x * 2 + 1] = y0;
-                    dst_row[x * 2 + 2] = (uint8_t)(((int)v0 + (int)v1) / 2);
-                    dst_row[x * 2 + 3] = y1;
-                }
-            }
+            PackedByteArray argb;
+            argb.resize(_width * _height * 4);
+            uint8_t *argb_bytes = argb.ptrw();
+            ok = libyuv::ABGRToARGB(src, _width * 4, argb_bytes, _width * 4, _width, _height) == 0 &&
+                    libyuv::ARGBToUYVY(argb_bytes, _width * 4, dst, row_bytes, _width, _height) == 0;
         }
-        result = _output->DisplayVideoFrameSync(frame);
-        ok = result == S_OK;
         if (!ok) {
-            UtilityFunctions::printerr("[DeckLinkOutput] DisplayVideoFrameSync failed: ",
-                    decklink::hresult_name(result), " (", (int64_t)result, ")");
+            UtilityFunctions::printerr("[DeckLinkOutput] libyuv conversion failed: pixel_format=", (int64_t)_pixel_format);
+        } else {
+            result = _output->DisplayVideoFrameSync(frame);
+            ok = result == S_OK;
+            if (!ok) {
+                UtilityFunctions::printerr("[DeckLinkOutput] DisplayVideoFrameSync failed: ",
+                        decklink::hresult_name(result), " (", (int64_t)result, ")");
+            }
         }
     }
     if (access_started) {

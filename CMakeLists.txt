@@ -27,6 +27,12 @@ if(NOT EXISTS "${GODOT_CPP_PATH}/CMakeLists.txt")
 endif()
 add_subdirectory("${GODOT_CPP_PATH}" "${CMAKE_BINARY_DIR}/godot-cpp")
 
+set(LIBYUV_PATH "${PROJECT_SOURCE_DIR}/lib/libyuv")
+if(NOT EXISTS "${LIBYUV_PATH}/CMakeLists.txt")
+    message(FATAL_ERROR "libyuv submodule not found. Run: git submodule update --init --recursive")
+endif()
+add_subdirectory("${LIBYUV_PATH}" "${CMAKE_BINARY_DIR}/libyuv" EXCLUDE_FROM_ALL)
+
 find_package(DeckLink REQUIRED)
 
 file(GLOB_RECURSE INCLUDES CONFIGURE_DEPENDS "src/*.hpp")
@@ -41,11 +47,12 @@ set_target_properties(GodotDeckLink PROPERTIES
 
 target_include_directories(GodotDeckLink PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${LIBYUV_PATH}/include"
     ${DECKLINK_INCLUDE_DIRS}
     "${CMAKE_CURRENT_BINARY_DIR}"
 )
 
-target_link_libraries(GodotDeckLink PRIVATE godot::cpp ${DECKLINK_LIBS})
+target_link_libraries(GodotDeckLink PRIVATE godot::cpp yuv ${DECKLINK_LIBS})
 if(UNIX AND NOT APPLE)
     target_link_libraries(GodotDeckLink PRIVATE dl pthread)
 endif()

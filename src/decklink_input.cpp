@@ -3,31 +3,14 @@
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
+#include <libyuv.h>
+
 #include "decklink.hpp"
 
 using namespace godot;
 
-static uint8_t clamp_u8(int p_value) {
-    if (p_value < 0) {
-        return 0;
-    }
-    if (p_value > 255) {
-        return 255;
-    }
-    return (uint8_t)p_value;
-}
-
-static void yuv_to_rgb(uint8_t p_y, uint8_t p_u, uint8_t p_v, uint8_t &r_r, uint8_t &r_g, uint8_t &r_b) {
-    const int c = (int)p_y - 16;
-    const int d = (int)p_u - 128;
-    const int e = (int)p_v - 128;
-    r_r = clamp_u8((298 * c + 409 * e + 128) >> 8);
-    r_g = clamp_u8((298 * c - 100 * d - 208 * e + 128) >> 8);
-    r_b = clamp_u8((298 * c + 516 * d + 128) >> 8);
-}
-
-static bool copy_bgra_frame_to_rgba(IDeckLinkVideoFrame *p_frame, PackedByteArray &r_rgba) {
-    if (!p_frame || p_frame->GetPixelFormat() != bmdFormat8BitBGRA) {
+static bool copy_frame_to_rgba(IDeckLinkVideoFrame *p_frame, PackedByteArray &r_rgba) {
+    if (!p_frame) {
         return false;
     }
 
@@ -51,79 +34,16 @@ static bool copy_bgra_frame_to_rgba(IDeckLinkVideoFrame *p_frame, PackedByteArra
         r_rgba.resize(width * height * 4);
         uint8_t *dst = r_rgba.ptrw();
 
-        for (int y = 0; y < height; ++y) {
-            const uint8_t *src_row = src + y * row_bytes;
-            uint8_t *dst_row = dst + y * width * 4;
-            for (int x = 0; x < width; ++x) {
-                dst_row[x * 4 + 0] = src_row[x * 4 + 2];
-                dst_row[x * 4 + 1] = src_row[x * 4 + 1];
-                dst_row[x * 4 + 2] = src_row[x * 4 + 0];
-                dst_row[x * 4 + 3] = src_row[x * 4 + 3];
-            }
+        // libyuv ARGB is BGRA in memory. Godot RGBA8 is ABGR in libyuv terms.
+        if (p_frame->GetPixelFormat() == bmdFormat8BitBGRA) {
+            ok = libyuv::ARGBToABGR(src, row_bytes, dst, width * 4, width, height) == 0;
+        } else if (p_frame->GetPixelFormat() == bmdFormat8BitYUV) {
+            PackedByteArray argb;
+            argb.resize(width * height * 4);
+            uint8_t *argb_bytes = argb.ptrw();
+            ok = libyuv::UYVYToARGB(src, row_bytes, argb_bytes, width * 4, width, height) == 0 &&
+                    libyuv::ARGBToABGR(argb_bytes, width * 4, dst, width * 4, width, height) == 0;
         }
-
-        ok = true;
-    }
-
-    if (access_started) {
-        buffer->EndAccess(bmdBufferAccessRead);
-    }
-    buffer->Release();
-    return ok;
-}
-
-static bool copy_yuv_frame_to_rgba(IDeckLinkVideoFrame *p_frame, PackedByteArray &r_rgba) {
-    if (!p_frame || p_frame->GetPixelFormat() != bmdFormat8BitYUV) {
-        return false;
-    }
-
-    IDeckLinkVideoBuffer *buffer = nullptr;
-    if (p_frame->QueryInterface(IID_IDeckLinkVideoBuffer, (void **)&buffer) != S_OK || !buffer) {
-        return false;
-    }
-
-    void *bytes = nullptr;
-    const int width = p_frame->GetWidth();
-    const int height = p_frame->GetHeight();
-    const int row_bytes = p_frame->GetRowBytes();
-    bool ok = false;
-    bool access_started = false;
-
-    if (buffer->StartAccess(bmdBufferAccessRead) == S_OK) {
-        access_started = true;
-    }
-    if (access_started && buffer->GetBytes(&bytes) == S_OK && bytes) {
-        const uint8_t *src = static_cast<const uint8_t *>(bytes);
-        r_rgba.resize(width * height * 4);
-        uint8_t *dst = r_rgba.ptrw();
-
-        for (int y = 0; y < height; ++y) {
-            const uint8_t *src_row = src + y * row_bytes;
-            uint8_t *dst_row = dst + y * width * 4;
-            for (int x = 0; x + 1 < width; x += 2) {
-                const uint8_t u = src_row[x * 2 + 0];
-                const uint8_t y0 = src_row[x * 2 + 1];
-                const uint8_t v = src_row[x * 2 + 2];
-                const uint8_t y1 = src_row[x * 2 + 3];
-
-                uint8_t r = 0;
-                uint8_t g = 0;
-                uint8_t b = 0;
-                yuv_to_rgb(y0, u, v, r, g, b);
-                dst_row[x * 4 + 0] = r;
-                dst_row[x * 4 + 1] = g;
-                dst_row[x * 4 + 2] = b;
-                dst_row[x * 4 + 3] = 255;
-
-                yuv_to_rgb(y1, u, v, r, g, b);
-                dst_row[(x + 1) * 4 + 0] = r;
-                dst_row[(x + 1) * 4 + 1] = g;
-                dst_row[(x + 1) * 4 + 2] = b;
-                dst_row[(x + 1) * 4 + 3] = 255;
-            }
-        }
-
-        ok = true;
     }
 
     if (access_started) {
@@ -186,12 +106,6 @@ bool DeckLinkInput::open(int p_device_index, int64_t p_display_mode) {
     _device->AddRef();
 
     if (_device->QueryInterface(IID_IDeckLinkInput, (void **)&_input) != S_OK || !_input) {
-        close();
-        return false;
-    }
-
-    _converter = CreateVideoConversionInstance();
-    if (!_converter) {
         close();
         return false;
     }
@@ -277,7 +191,6 @@ void DeckLinkInput::close() {
         _input->SetCallback(nullptr);
     }
 
-    decklink::safe_release(_converter);
     decklink::safe_release(_input);
     decklink::safe_release(_device);
 
@@ -338,43 +251,19 @@ HRESULT DeckLinkInput::VideoInputFormatChanged(BMDVideoInputFormatChangedEvents 
 }
 
 HRESULT DeckLinkInput::VideoInputFrameArrived(IDeckLinkVideoInputFrame *p_video_frame, IDeckLinkAudioInputPacket *p_audio_packet) {
-    if (!p_video_frame || !_converter || (p_video_frame->GetFlags() & bmdFrameHasNoInputSource)) {
+    if (!p_video_frame || (p_video_frame->GetFlags() & bmdFrameHasNoInputSource)) {
         return S_OK;
     }
 
-    IDeckLinkVideoFrame *bgra_frame = nullptr;
-    if (p_video_frame->GetPixelFormat() == bmdFormat8BitBGRA) {
-        bgra_frame = p_video_frame;
-        bgra_frame->AddRef();
-    } else {
-        HRESULT result = _converter->ConvertNewFrame(p_video_frame, bmdFormat8BitBGRA, bmdColorspaceUnknown, nullptr, &bgra_frame);
-        if (result != S_OK || !bgra_frame) {
-            PackedByteArray rgba;
-            if (!copy_yuv_frame_to_rgba(p_video_frame, rgba)) {
-                UtilityFunctions::printerr("[DeckLinkInput] Frame conversion failed: ", (int64_t)result);
-                return S_OK;
-            }
-
-            std::lock_guard<std::mutex> lock(_frame_mutex);
-            _width = p_video_frame->GetWidth();
-            _height = p_video_frame->GetHeight();
-            _latest_rgba = rgba;
-            _has_frame = true;
-            return S_OK;
-        }
-    }
-
     PackedByteArray rgba;
-    if (copy_bgra_frame_to_rgba(bgra_frame, rgba)) {
+    if (copy_frame_to_rgba(p_video_frame, rgba)) {
         std::lock_guard<std::mutex> lock(_frame_mutex);
-        _width = bgra_frame->GetWidth();
-        _height = bgra_frame->GetHeight();
+        _width = p_video_frame->GetWidth();
+        _height = p_video_frame->GetHeight();
         _latest_rgba = rgba;
         _has_frame = true;
     } else {
-        UtilityFunctions::printerr("[DeckLinkInput] Could not read BGRA frame buffer.");
+        UtilityFunctions::printerr("[DeckLinkInput] Could not convert frame to RGBA: pixel_format=", (int64_t)p_video_frame->GetPixelFormat());
     }
-
-    bgra_frame->Release();
     return S_OK;
 }
