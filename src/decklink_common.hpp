@@ -2,15 +2,15 @@
 
 #include <DeckLinkAPI.h>
 
-#include <cstdlib>
-#include <cstring>
+#include <stdlib.h>
+#include <string.h>
 
 namespace godot {
 namespace decklink {
 
 inline void release_string(const char *p_string) {
     if (p_string) {
-        std::free((void *)p_string);
+        free((void *)p_string);
     }
 }
 
@@ -23,7 +23,7 @@ inline void safe_release(T *&p_object) {
 }
 
 inline bool iid_equal(REFIID p_a, REFIID p_b) {
-    return std::memcmp(&p_a, &p_b, sizeof(p_a)) == 0;
+    return memcmp(&p_a, &p_b, sizeof(p_a)) == 0;
 }
 
 inline const char *hresult_name(HRESULT p_result) {

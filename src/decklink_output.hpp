@@ -2,9 +2,8 @@
 
 #include <godot_cpp/classes/image.hpp>
 #include <godot_cpp/classes/object.hpp>
+#include <godot_cpp/templates/safe_refcount.hpp>
 #include <godot_cpp/variant/string.hpp>
-
-#include <atomic>
 
 #include "decklink_common.hpp"
 
@@ -35,7 +34,7 @@ protected:
     static void _bind_methods();
 
 private:
-    std::atomic<ULONG> _ref_count = 1;
+    SafeRefCount _ref_count;
     IDeckLink *_device = nullptr;
     IDeckLinkOutput *_output = nullptr;
     BMDDisplayMode _display_mode = bmdModeHD1080p5994;

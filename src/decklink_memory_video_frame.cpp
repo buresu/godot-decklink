@@ -5,6 +5,7 @@
 using namespace godot;
 
 DeckLinkMemoryVideoFrame::DeckLinkMemoryVideoFrame(int p_width, int p_height, BMDPixelFormat p_format) {
+    _ref_count.init();
     _width = p_width;
     _height = p_height;
     _format = p_format;
@@ -31,11 +32,11 @@ HRESULT DeckLinkMemoryVideoFrame::QueryInterface(REFIID p_iid, LPVOID *r_ppv) {
 }
 
 ULONG DeckLinkMemoryVideoFrame::AddRef() {
-    return ++_ref_count;
+    return _ref_count.refval();
 }
 
 ULONG DeckLinkMemoryVideoFrame::Release() {
-    const ULONG count = --_ref_count;
+    const ULONG count = _ref_count.unrefval();
     if (count == 0) {
         delete this;
     }
@@ -80,7 +81,7 @@ HRESULT DeckLinkMemoryVideoFrame::GetBytes(void **r_buffer) {
     if (!r_buffer) {
         return E_INVALIDARG;
     }
-    *r_buffer = _data.data();
+    *r_buffer = _data.ptrw();
     return S_OK;
 }
 
@@ -101,7 +102,7 @@ HRESULT DeckLinkMemoryVideoFrame::EndAccess(BMDBufferAccessFlags p_flags) {
 }
 
 const uint8_t *DeckLinkMemoryVideoFrame::data() const {
-    return _data.data();
+    return _data.ptr();
 }
 
 int DeckLinkMemoryVideoFrame::size() const {

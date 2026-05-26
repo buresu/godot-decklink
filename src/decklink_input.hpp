@@ -1,11 +1,10 @@
 #pragma once
 
 #include <godot_cpp/classes/image.hpp>
+#include <godot_cpp/classes/mutex.hpp>
 #include <godot_cpp/classes/object.hpp>
+#include <godot_cpp/templates/safe_refcount.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
-
-#include <atomic>
-#include <mutex>
 
 #include "decklink_common.hpp"
 
@@ -37,7 +36,7 @@ protected:
     static void _bind_methods();
 
 private:
-    std::atomic<ULONG> _ref_count = 1;
+    SafeRefCount _ref_count;
     IDeckLink *_device = nullptr;
     IDeckLinkInput *_input = nullptr;
     BMDDisplayMode _display_mode = bmdModeHD1080p5994;
@@ -46,7 +45,7 @@ private:
     int _width = 0;
     int _height = 0;
     bool _open = false;
-    mutable std::mutex _frame_mutex;
+    mutable Mutex _frame_mutex;
     PackedByteArray _latest_rgba;
     bool _has_frame = false;
 };

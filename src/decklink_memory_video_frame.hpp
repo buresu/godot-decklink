@@ -2,8 +2,9 @@
 
 #include <DeckLinkAPI.h>
 
-#include <atomic>
-#include <vector>
+#include <godot_cpp/core/defs.hpp>
+#include <godot_cpp/variant/packed_byte_array.hpp>
+#include <godot_cpp/templates/safe_refcount.hpp>
 
 namespace godot {
 
@@ -35,12 +36,12 @@ protected:
     ~DeckLinkMemoryVideoFrame() override = default;
 
 private:
-    std::atomic<ULONG> _ref_count = 1;
+    SafeRefCount _ref_count;
     int _width = 0;
     int _height = 0;
     int _row_bytes = 0;
     BMDPixelFormat _format = bmdFormatUnspecified;
-    std::vector<uint8_t> _data;
+    PackedByteArray _data;
 };
 
 } // namespace godot

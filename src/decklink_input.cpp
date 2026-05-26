@@ -1,6 +1,7 @@
 #include "decklink_input.hpp"
 
 #include <godot_cpp/core/class_db.hpp>
+#include <godot_cpp/core/mutex_lock.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
 #include <libyuv.h>
@@ -53,7 +54,9 @@ static bool copy_frame_to_rgba(IDeckLinkVideoFrame *p_frame, PackedByteArray &r_
     return ok;
 }
 
-DeckLinkInput::DeckLinkInput() = default;
+DeckLinkInput::DeckLinkInput() {
+    _ref_count.init();
+}
 
 DeckLinkInput::~DeckLinkInput() {
     close();
@@ -83,12 +86,11 @@ HRESULT DeckLinkInput::QueryInterface(REFIID p_iid, LPVOID *r_ppv) {
 }
 
 ULONG DeckLinkInput::AddRef() {
-    return ++_ref_count;
+    return _ref_count.refval();
 }
 
 ULONG DeckLinkInput::Release() {
-    const ULONG count = --_ref_count;
-    return count;
+    return _ref_count.unrefval();
 }
 
 bool DeckLinkInput::open(int p_device_index, int64_t p_display_mode) {
@@ -151,7 +153,7 @@ bool DeckLinkInput::open(int p_device_index, int64_t p_display_mode) {
     mode->Release();
 
     {
-        std::lock_guard<std::mutex> lock(_frame_mutex);
+        MutexLock lock(_frame_mutex);
         _latest_rgba.resize(_width * _height * 4);
         _has_frame = false;
     }
@@ -194,7 +196,7 @@ void DeckLinkInput::close() {
     decklink::safe_release(_input);
     decklink::safe_release(_device);
 
-    std::lock_guard<std::mutex> lock(_frame_mutex);
+    MutexLock lock(_frame_mutex);
     _latest_rgba.clear();
     _has_frame = false;
     _open = false;
@@ -207,12 +209,12 @@ bool DeckLinkInput::is_open() const {
 }
 
 bool DeckLinkInput::has_frame() const {
-    std::lock_guard<std::mutex> lock(_frame_mutex);
+    MutexLock lock(_frame_mutex);
     return _has_frame;
 }
 
 Ref<Image> DeckLinkInput::get_image() const {
-    std::lock_guard<std::mutex> lock(_frame_mutex);
+    MutexLock lock(_frame_mutex);
     if (!_has_frame || _latest_rgba.is_empty()) {
         return Ref<Image>();
     }
@@ -239,7 +241,7 @@ HRESULT DeckLinkInput::VideoInputFormatChanged(BMDVideoInputFormatChangedEvents 
         _width = p_new_display_mode->GetWidth();
         _height = p_new_display_mode->GetHeight();
         {
-            std::lock_guard<std::mutex> lock(_frame_mutex);
+            MutexLock lock(_frame_mutex);
             _latest_rgba.resize(_width * _height * 4);
             _has_frame = false;
         }
@@ -257,7 +259,7 @@ HRESULT DeckLinkInput::VideoInputFrameArrived(IDeckLinkVideoInputFrame *p_video_
 
     PackedByteArray rgba;
     if (copy_frame_to_rgba(p_video_frame, rgba)) {
-        std::lock_guard<std::mutex> lock(_frame_mutex);
+        MutexLock lock(_frame_mutex);
         _width = p_video_frame->GetWidth();
         _height = p_video_frame->GetHeight();
         _latest_rgba = rgba;

@@ -8,11 +8,11 @@
 
 #include "decklink.hpp"
 
-#include <cstring>
-
 using namespace godot;
 
-DeckLinkOutput::DeckLinkOutput() = default;
+DeckLinkOutput::DeckLinkOutput() {
+    _ref_count.init();
+}
 
 DeckLinkOutput::~DeckLinkOutput() {
     close();
@@ -41,12 +41,11 @@ HRESULT DeckLinkOutput::QueryInterface(REFIID p_iid, LPVOID *r_ppv) {
 }
 
 ULONG DeckLinkOutput::AddRef() {
-    return ++_ref_count;
+    return _ref_count.refval();
 }
 
 ULONG DeckLinkOutput::Release() {
-    const ULONG count = --_ref_count;
-    return count;
+    return _ref_count.unrefval();
 }
 
 bool DeckLinkOutput::open(int p_device_index, int64_t p_display_mode) {
