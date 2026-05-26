@@ -27,40 +27,40 @@ void DeckLinkOutput::_bind_methods() {
     BIND_ENUM_CONSTANT(OUTPUT_FORMAT_BGRA);
     BIND_ENUM_CONSTANT(OUTPUT_FORMAT_YUV);
 
-    ClassDB::bind_method(D_METHOD("open", "device_index", "display_mode"), &DeckLinkOutput::open, DEFVAL((int64_t)bmdModeHD1080p5994));
+    ClassDB::bind_method(D_METHOD("open", "device", "display_mode"), &DeckLinkOutput::open, DEFVAL((int64_t)bmdModeHD1080p5994));
     ClassDB::bind_method(D_METHOD("close"), &DeckLinkOutput::close);
     ClassDB::bind_method(D_METHOD("is_open"), &DeckLinkOutput::is_open);
     ClassDB::bind_method(D_METHOD("output_image", "image"), &DeckLinkOutput::output_image);
     ClassDB::bind_method(D_METHOD("get_texture"), &DeckLinkOutput::get_texture);
     ClassDB::bind_method(D_METHOD("set_texture", "texture"), &DeckLinkOutput::set_texture);
-    ClassDB::bind_method(D_METHOD("is_sending"), &DeckLinkOutput::is_sending);
-    ClassDB::bind_method(D_METHOD("set_sending", "sending"), &DeckLinkOutput::set_sending);
-    ClassDB::bind_method(D_METHOD("get_device_index"), &DeckLinkOutput::get_device_index);
-    ClassDB::bind_method(D_METHOD("set_device_index", "device_index"), &DeckLinkOutput::set_device_index);
+    ClassDB::bind_method(D_METHOD("is_enabled"), &DeckLinkOutput::is_enabled);
+    ClassDB::bind_method(D_METHOD("set_enabled", "enabled"), &DeckLinkOutput::set_enabled);
+    ClassDB::bind_method(D_METHOD("get_device"), &DeckLinkOutput::get_device);
+    ClassDB::bind_method(D_METHOD("set_device", "device"), &DeckLinkOutput::set_device);
     ClassDB::bind_method(D_METHOD("get_display_mode"), &DeckLinkOutput::get_display_mode);
     ClassDB::bind_method(D_METHOD("set_display_mode", "display_mode"), &DeckLinkOutput::set_display_mode);
-    ClassDB::bind_method(D_METHOD("get_output_connection"), &DeckLinkOutput::get_output_connection);
-    ClassDB::bind_method(D_METHOD("set_output_connection", "output_connection"), &DeckLinkOutput::set_output_connection);
+    ClassDB::bind_method(D_METHOD("get_connection"), &DeckLinkOutput::get_connection);
+    ClassDB::bind_method(D_METHOD("set_connection", "connection"), &DeckLinkOutput::set_connection);
     ClassDB::bind_method(D_METHOD("get_output_format"), &DeckLinkOutput::get_output_format);
     ClassDB::bind_method(D_METHOD("set_output_format", "output_format"), &DeckLinkOutput::set_output_format);
     ClassDB::bind_method(D_METHOD("get_width"), &DeckLinkOutput::get_width);
     ClassDB::bind_method(D_METHOD("get_height"), &DeckLinkOutput::get_height);
 
     ClassDB::add_property("DeckLinkOutput",
-            { Variant::BOOL, "sending" },
-            "set_sending", "is_sending");
+            { Variant::BOOL, "enabled" },
+            "set_enabled", "is_enabled");
     ClassDB::add_property("DeckLinkOutput",
             { Variant::OBJECT, "texture", PROPERTY_HINT_RESOURCE_TYPE, "Texture2D" },
             "set_texture", "get_texture");
     ClassDB::add_property("DeckLinkOutput",
-            { Variant::INT, "device_index", PROPERTY_HINT_ENUM },
-            "set_device_index", "get_device_index");
+            { Variant::INT, "device", PROPERTY_HINT_ENUM },
+            "set_device", "get_device");
     ClassDB::add_property("DeckLinkOutput",
             { Variant::INT, "display_mode", PROPERTY_HINT_ENUM },
             "set_display_mode", "get_display_mode");
     ClassDB::add_property("DeckLinkOutput",
-            { Variant::INT, "output_connection", PROPERTY_HINT_ENUM, "Unspecified:0,SDI:1,HDMI:2,Optical SDI:4,Component:8,Composite:16,S-Video:32" },
-            "set_output_connection", "get_output_connection");
+            { Variant::INT, "connection", PROPERTY_HINT_ENUM, "Unspecified:0,SDI:1,HDMI:2,Optical SDI:4,Component:8,Composite:16,S-Video:32" },
+            "set_connection", "get_connection");
     ClassDB::add_property("DeckLinkOutput",
             { Variant::INT, "output_format", PROPERTY_HINT_ENUM, "Auto,BGRA,YUV" },
             "set_output_format", "get_output_format");
@@ -88,8 +88,8 @@ ULONG DeckLinkOutput::Release() {
 }
 
 void DeckLinkOutput::_ready() {
-    if (_sending) {
-        set_sending(true);
+    if (_enabled) {
+        set_enabled(true);
     }
 }
 
@@ -100,7 +100,7 @@ void DeckLinkOutput::_exit_tree() {
 
 void DeckLinkOutput::_validate_property(PropertyInfo &p_property) const {
     const String name = p_property.name;
-    if (name == "device_index") {
+    if (name == "device") {
         p_property.hint = PROPERTY_HINT_ENUM;
         p_property.hint_string = _get_device_hint_string();
     } else if (name == "display_mode") {
@@ -109,9 +109,9 @@ void DeckLinkOutput::_validate_property(PropertyInfo &p_property) const {
     }
 }
 
-bool DeckLinkOutput::open(int p_device_index, int64_t p_display_mode) {
+bool DeckLinkOutput::open(int p_device, int64_t p_display_mode) {
     close();
-    _device_index = p_device_index;
+    _device = p_device;
     _display_mode = (BMDDisplayMode)p_display_mode;
 
     DeckLink *decklink = DeckLink::get_singleton();
@@ -119,13 +119,13 @@ bool DeckLinkOutput::open(int p_device_index, int64_t p_display_mode) {
         return false;
     }
 
-    _device = decklink->get_device(p_device_index);
-    if (!_device) {
+    _decklink_device = decklink->get_device(p_device);
+    if (!_decklink_device) {
         return false;
     }
-    _device->AddRef();
+    _decklink_device->AddRef();
 
-    if (_device->QueryInterface(IID_IDeckLinkOutput, (void **)&_output) != S_OK || !_output) {
+    if (_decklink_device->QueryInterface(IID_IDeckLinkOutput, (void **)&_output) != S_OK || !_output) {
         close();
         return false;
     }
@@ -134,10 +134,10 @@ bool DeckLinkOutput::open(int p_device_index, int64_t p_display_mode) {
     bool supported_yuv = false;
     BMDDisplayMode actual_mode = bmdModeUnknown;
     if (_output_format == OUTPUT_FORMAT_AUTO || _output_format == OUTPUT_FORMAT_BGRA) {
-        _output->DoesSupportVideoMode(_output_connection, _display_mode, bmdFormat8BitBGRA, bmdNoVideoOutputConversion, bmdSupportedVideoModeDefault, &actual_mode, &supported_bgra);
+        _output->DoesSupportVideoMode(_connection, _display_mode, bmdFormat8BitBGRA, bmdNoVideoOutputConversion, bmdSupportedVideoModeDefault, &actual_mode, &supported_bgra);
     }
     if (_output_format == OUTPUT_FORMAT_AUTO || _output_format == OUTPUT_FORMAT_YUV || !supported_bgra) {
-        _output->DoesSupportVideoMode(_output_connection, _display_mode, bmdFormat8BitYUV, bmdNoVideoOutputConversion, bmdSupportedVideoModeDefault, &actual_mode, &supported_yuv);
+        _output->DoesSupportVideoMode(_connection, _display_mode, bmdFormat8BitYUV, bmdNoVideoOutputConversion, bmdSupportedVideoModeDefault, &actual_mode, &supported_yuv);
     }
 
     if (!supported_bgra && !supported_yuv) {
@@ -183,7 +183,7 @@ void DeckLinkOutput::close() {
     }
 
     decklink::safe_release(_output);
-    decklink::safe_release(_device);
+    decklink::safe_release(_decklink_device);
     _open = false;
     _width = 0;
     _height = 0;
@@ -292,15 +292,15 @@ void DeckLinkOutput::set_texture(Ref<Texture2D> p_texture) {
     _texture = p_texture;
 }
 
-bool DeckLinkOutput::is_sending() const {
-    return _sending;
+bool DeckLinkOutput::is_enabled() const {
+    return _enabled;
 }
 
-void DeckLinkOutput::set_sending(bool p_sending) {
-    _sending = p_sending;
-    if (_sending) {
-        if (!_open && !open(_device_index, _display_mode)) {
-            _sending = false;
+void DeckLinkOutput::set_enabled(bool p_enabled) {
+    _enabled = p_enabled;
+    if (_enabled) {
+        if (!_open && !open(_device, _display_mode)) {
+            _enabled = false;
             return;
         }
         _connect_frame_post_draw();
@@ -310,17 +310,17 @@ void DeckLinkOutput::set_sending(bool p_sending) {
     }
 }
 
-int DeckLinkOutput::get_device_index() const {
-    return _device_index;
+int DeckLinkOutput::get_device() const {
+    return _device;
 }
 
-void DeckLinkOutput::set_device_index(int p_device_index) {
-    if (_device_index == p_device_index) {
+void DeckLinkOutput::set_device(int p_device) {
+    if (_device == p_device) {
         return;
     }
-    _device_index = p_device_index;
+    _device = p_device;
     notify_property_list_changed();
-    _restart_if_sending();
+    _restart_if_enabled();
 }
 
 int64_t DeckLinkOutput::get_display_mode() const {
@@ -332,19 +332,19 @@ void DeckLinkOutput::set_display_mode(int64_t p_display_mode) {
         return;
     }
     _display_mode = (BMDDisplayMode)p_display_mode;
-    _restart_if_sending();
+    _restart_if_enabled();
 }
 
-int64_t DeckLinkOutput::get_output_connection() const {
-    return (int64_t)_output_connection;
+int64_t DeckLinkOutput::get_connection() const {
+    return (int64_t)_connection;
 }
 
-void DeckLinkOutput::set_output_connection(int64_t p_output_connection) {
-    if (_output_connection == (BMDVideoConnection)p_output_connection) {
+void DeckLinkOutput::set_connection(int64_t p_connection) {
+    if (_connection == (BMDVideoConnection)p_connection) {
         return;
     }
-    _output_connection = (BMDVideoConnection)p_output_connection;
-    _restart_if_sending();
+    _connection = (BMDVideoConnection)p_connection;
+    _restart_if_enabled();
 }
 
 DeckLinkOutput::OutputFormat DeckLinkOutput::get_output_format() const {
@@ -356,11 +356,11 @@ void DeckLinkOutput::set_output_format(OutputFormat p_output_format) {
         return;
     }
     _output_format = p_output_format;
-    _restart_if_sending();
+    _restart_if_enabled();
 }
 
 void DeckLinkOutput::_on_frame_post_draw() {
-    if (_sending && _should_output_now()) {
+    if (_enabled && _should_output_now()) {
         _output_texture();
     }
 }
@@ -411,15 +411,15 @@ bool DeckLinkOutput::_should_output_now() {
     return true;
 }
 
-void DeckLinkOutput::_restart_if_sending() {
-    if (!_sending) {
+void DeckLinkOutput::_restart_if_enabled() {
+    if (!_enabled) {
         return;
     }
 
     close();
-    if (!open(_device_index, _display_mode)) {
+    if (!open(_device, _display_mode)) {
         _disconnect_frame_post_draw();
-        _sending = false;
+        _enabled = false;
     }
 }
 
@@ -460,7 +460,7 @@ String DeckLinkOutput::_get_display_mode_hint_string() const {
         return "1080p59.94:" + String::num_int64((int64_t)bmdModeHD1080p5994);
     }
 
-    const Array modes = decklink->get_output_display_modes(_device_index);
+    const Array modes = decklink->get_output_display_modes(_device);
     String hint;
     for (int i = 0; i < modes.size(); ++i) {
         const Dictionary mode = modes[i];

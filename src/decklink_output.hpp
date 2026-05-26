@@ -32,20 +32,20 @@ public:
     ULONG AddRef() override;
     ULONG Release() override;
 
-    bool open(int p_device_index, int64_t p_display_mode = bmdModeHD1080p5994);
+    bool open(int p_device, int64_t p_display_mode = bmdModeHD1080p5994);
     void close();
     bool is_open() const;
     bool output_image(const Ref<Image> &p_image);
     Ref<Texture2D> get_texture() const;
     void set_texture(Ref<Texture2D> p_texture);
-    bool is_sending() const;
-    void set_sending(bool p_sending);
-    int get_device_index() const;
-    void set_device_index(int p_device_index);
+    bool is_enabled() const;
+    void set_enabled(bool p_enabled);
+    int get_device() const;
+    void set_device(int p_device);
     int64_t get_display_mode() const;
     void set_display_mode(int64_t p_display_mode);
-    int64_t get_output_connection() const;
-    void set_output_connection(int64_t p_output_connection);
+    int64_t get_connection() const;
+    void set_connection(int64_t p_connection);
     OutputFormat get_output_format() const;
     void set_output_format(OutputFormat p_output_format);
     int get_width() const;
@@ -63,16 +63,16 @@ private:
     void _connect_frame_post_draw();
     void _disconnect_frame_post_draw();
     bool _should_output_now();
-    void _restart_if_sending();
+    void _restart_if_enabled();
     String _get_device_hint_string() const;
     String _get_display_mode_hint_string() const;
 
     SafeRefCount _ref_count;
-    IDeckLink *_device = nullptr;
+    IDeckLink *_decklink_device = nullptr;
     IDeckLinkOutput *_output = nullptr;
-    int _device_index = 0;
+    int _device = 0;
     BMDDisplayMode _display_mode = bmdModeHD1080p5994;
-    BMDVideoConnection _output_connection = bmdVideoConnectionUnspecified;
+    BMDVideoConnection _connection = bmdVideoConnectionUnspecified;
     OutputFormat _output_format = OUTPUT_FORMAT_AUTO;
     BMDPixelFormat _pixel_format = bmdFormat8BitBGRA;
     BMDTimeValue _frame_duration = 1001;
@@ -82,7 +82,7 @@ private:
     int _width = 0;
     int _height = 0;
     bool _open = false;
-    bool _sending = false;
+    bool _enabled = false;
     bool _frame_post_draw_connected = false;
     Ref<Texture2D> _texture;
 };

@@ -68,13 +68,13 @@ DeckLinkInput::~DeckLinkInput() {
 }
 
 void DeckLinkInput::_bind_methods() {
-    ClassDB::bind_method(D_METHOD("open", "device_index", "display_mode"), &DeckLinkInput::open, DEFVAL((int64_t)bmdModeHD1080p5994));
+    ClassDB::bind_method(D_METHOD("open", "device", "display_mode"), &DeckLinkInput::open, DEFVAL((int64_t)bmdModeHD1080p5994));
     ClassDB::bind_method(D_METHOD("close"), &DeckLinkInput::close);
     ClassDB::bind_method(D_METHOD("is_open"), &DeckLinkInput::is_open);
-    ClassDB::bind_method(D_METHOD("is_receiving"), &DeckLinkInput::is_receiving);
-    ClassDB::bind_method(D_METHOD("set_receiving", "receiving"), &DeckLinkInput::set_receiving);
-    ClassDB::bind_method(D_METHOD("get_device_index"), &DeckLinkInput::get_device_index);
-    ClassDB::bind_method(D_METHOD("set_device_index", "device_index"), &DeckLinkInput::set_device_index);
+    ClassDB::bind_method(D_METHOD("is_enabled"), &DeckLinkInput::is_enabled);
+    ClassDB::bind_method(D_METHOD("set_enabled", "enabled"), &DeckLinkInput::set_enabled);
+    ClassDB::bind_method(D_METHOD("get_device"), &DeckLinkInput::get_device);
+    ClassDB::bind_method(D_METHOD("set_device", "device"), &DeckLinkInput::set_device);
     ClassDB::bind_method(D_METHOD("get_display_mode"), &DeckLinkInput::get_display_mode);
     ClassDB::bind_method(D_METHOD("set_display_mode", "display_mode"), &DeckLinkInput::set_display_mode);
     ClassDB::bind_method(D_METHOD("has_frame"), &DeckLinkInput::has_frame);
@@ -83,11 +83,11 @@ void DeckLinkInput::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_height"), &DeckLinkInput::get_height);
 
     ClassDB::add_property("DeckLinkInput",
-            { Variant::BOOL, "receiving" },
-            "set_receiving", "is_receiving");
+            { Variant::BOOL, "enabled" },
+            "set_enabled", "is_enabled");
     ClassDB::add_property("DeckLinkInput",
-            { Variant::INT, "device_index", PROPERTY_HINT_ENUM },
-            "set_device_index", "get_device_index");
+            { Variant::INT, "device", PROPERTY_HINT_ENUM },
+            "set_device", "get_device");
     ClassDB::add_property("DeckLinkInput",
             { Variant::INT, "display_mode", PROPERTY_HINT_ENUM },
             "set_display_mode", "get_display_mode");
@@ -115,8 +115,8 @@ ULONG DeckLinkInput::Release() {
 }
 
 void DeckLinkInput::_ready() {
-    if (_receiving) {
-        set_receiving(true);
+    if (_enabled) {
+        set_enabled(true);
     }
 }
 
@@ -126,7 +126,7 @@ void DeckLinkInput::_exit_tree() {
 
 void DeckLinkInput::_validate_property(PropertyInfo &p_property) const {
     const String name = p_property.name;
-    if (name == "device_index") {
+    if (name == "device") {
         p_property.hint = PROPERTY_HINT_ENUM;
         p_property.hint_string = _get_device_hint_string();
     } else if (name == "display_mode") {
@@ -135,9 +135,9 @@ void DeckLinkInput::_validate_property(PropertyInfo &p_property) const {
     }
 }
 
-bool DeckLinkInput::open(int p_device_index, int64_t p_display_mode) {
+bool DeckLinkInput::open(int p_device, int64_t p_display_mode) {
     close();
-    _device_index = p_device_index;
+    _device = p_device;
     _display_mode = (BMDDisplayMode)p_display_mode;
 
     DeckLink *decklink = DeckLink::get_singleton();
@@ -145,13 +145,13 @@ bool DeckLinkInput::open(int p_device_index, int64_t p_display_mode) {
         return false;
     }
 
-    _device = decklink->get_device(p_device_index);
-    if (!_device) {
+    _decklink_device = decklink->get_device(p_device);
+    if (!_decklink_device) {
         return false;
     }
-    _device->AddRef();
+    _decklink_device->AddRef();
 
-    if (_device->QueryInterface(IID_IDeckLinkInput, (void **)&_decklink_input) != S_OK || !_decklink_input) {
+    if (_decklink_device->QueryInterface(IID_IDeckLinkInput, (void **)&_decklink_input) != S_OK || !_decklink_input) {
         close();
         return false;
     }
@@ -159,7 +159,7 @@ bool DeckLinkInput::open(int p_device_index, int64_t p_display_mode) {
     _input_flags = bmdVideoInputFlagDefault;
 
     IDeckLinkProfileAttributes *attributes = nullptr;
-    if (_device->QueryInterface(IID_IDeckLinkProfileAttributes, (void **)&attributes) == S_OK && attributes) {
+    if (_decklink_device->QueryInterface(IID_IDeckLinkProfileAttributes, (void **)&attributes) == S_OK && attributes) {
         bool supports_format_detection = false;
         if (attributes->GetFlag(BMDDeckLinkSupportsInputFormatDetection, &supports_format_detection) == S_OK && supports_format_detection) {
             _input_flags = bmdVideoInputEnableFormatDetection;
@@ -226,7 +226,7 @@ bool DeckLinkInput::open(int p_device_index, int64_t p_display_mode) {
     }
 
     _open = true;
-    _receiving = true;
+    _enabled = true;
     return true;
 }
 
@@ -238,13 +238,13 @@ void DeckLinkInput::close() {
     }
 
     decklink::safe_release(_decklink_input);
-    decklink::safe_release(_device);
+    decklink::safe_release(_decklink_device);
 
     MutexLock lock(*_frame_mutex);
     _latest_rgba.clear();
     _has_frame = false;
     _open = false;
-    _receiving = false;
+    _enabled = false;
     _width = 0;
     _height = 0;
 }
@@ -253,35 +253,35 @@ bool DeckLinkInput::is_open() const {
     return _open;
 }
 
-bool DeckLinkInput::is_receiving() const {
-    return _receiving;
+bool DeckLinkInput::is_enabled() const {
+    return _enabled;
 }
 
-void DeckLinkInput::set_receiving(bool p_receiving) {
-    if (_receiving == p_receiving && _open == p_receiving) {
+void DeckLinkInput::set_enabled(bool p_enabled) {
+    if (_enabled == p_enabled && _open == p_enabled) {
         return;
     }
 
-    if (p_receiving) {
-        if (!open(_device_index, _display_mode)) {
-            _receiving = false;
+    if (p_enabled) {
+        if (!open(_device, _display_mode)) {
+            _enabled = false;
         }
     } else {
         close();
     }
 }
 
-int DeckLinkInput::get_device_index() const {
-    return _device_index;
+int DeckLinkInput::get_device() const {
+    return _device;
 }
 
-void DeckLinkInput::set_device_index(int p_device_index) {
-    if (_device_index == p_device_index) {
+void DeckLinkInput::set_device(int p_device) {
+    if (_device == p_device) {
         return;
     }
-    _device_index = p_device_index;
+    _device = p_device;
     notify_property_list_changed();
-    _restart_if_receiving();
+    _restart_if_enabled();
 }
 
 int64_t DeckLinkInput::get_display_mode() const {
@@ -293,7 +293,7 @@ void DeckLinkInput::set_display_mode(int64_t p_display_mode) {
         return;
     }
     _display_mode = (BMDDisplayMode)p_display_mode;
-    _restart_if_receiving();
+    _restart_if_enabled();
 }
 
 bool DeckLinkInput::has_frame() const {
@@ -340,14 +340,14 @@ HRESULT DeckLinkInput::VideoInputFormatChanged(BMDVideoInputFormatChangedEvents 
     return S_OK;
 }
 
-void DeckLinkInput::_restart_if_receiving() {
-    if (!_receiving) {
+void DeckLinkInput::_restart_if_enabled() {
+    if (!_enabled) {
         return;
     }
 
     close();
-    if (!open(_device_index, _display_mode)) {
-        _receiving = false;
+    if (!open(_device, _display_mode)) {
+        _enabled = false;
     }
 }
 
@@ -388,7 +388,7 @@ String DeckLinkInput::_get_display_mode_hint_string() const {
         return "1080p59.94:" + String::num_int64((int64_t)bmdModeHD1080p5994);
     }
 
-    const Array modes = decklink->get_input_display_modes(_device_index);
+    const Array modes = decklink->get_input_display_modes(_device);
     String hint;
     for (int i = 0; i < modes.size(); ++i) {
         const Dictionary mode = modes[i];

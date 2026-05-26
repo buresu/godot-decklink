@@ -43,7 +43,7 @@ func _process(delta: float) -> void:
 			else:
 				_preview_texture.update(image)
 
-	if _output != null and _output.is_sending():
+	if _output != null and _output.is_enabled():
 		_output_time += delta
 		var interval := 1.0 / OUTPUT_FPS
 		while _output_time >= interval:
@@ -193,10 +193,10 @@ func _fill_mode_select(select: OptionButton, modes: Array) -> void:
 		select.select(0)
 
 func _toggle_input() -> void:
-	if _input != null and _input.is_receiving():
+	if _input != null and _input.is_enabled():
 		_stop_input()
 		return
-	if _output != null and _output.is_sending():
+	if _output != null and _output.is_enabled():
 		_stop_output()
 
 	var device_index := _selected_device_index()
@@ -208,9 +208,9 @@ func _toggle_input() -> void:
 	if _input == null:
 		_status_label.text = "DeckLinkInput class is not available"
 		return
-	_input.device_index = device_index
+	_input.device = device_index
 	_input.display_mode = mode
-	_input.receiving = true
+	_input.enabled = true
 	if _input.is_open():
 		_input_button.text = "Stop Input"
 		_status_label.text = "Input started"
@@ -218,10 +218,10 @@ func _toggle_input() -> void:
 		_status_label.text = "Input failed"
 
 func _toggle_output() -> void:
-	if _output != null and _output.is_sending():
+	if _output != null and _output.is_enabled():
 		_stop_output()
 		return
-	if _input != null and _input.is_receiving():
+	if _input != null and _input.is_enabled():
 		_stop_input()
 
 	var device_index := _selected_device_index()
@@ -233,9 +233,9 @@ func _toggle_output() -> void:
 	if _output == null:
 		_status_label.text = "DeckLinkOutput class is not available"
 		return
-	_output.device_index = device_index
+	_output.device = device_index
 	_output.display_mode = mode
-	_output.sending = true
+	_output.enabled = true
 	if _output.is_open():
 		_output_button.text = "Stop Output Pattern"
 		_output_time = 0.0
@@ -247,7 +247,7 @@ func _toggle_output() -> void:
 		_status_label.text = "Output failed"
 
 func _send_one_frame() -> void:
-	if _input != null and _input.is_receiving():
+	if _input != null and _input.is_enabled():
 		_stop_input()
 
 	if _output == null or not _output.is_open():
@@ -259,7 +259,7 @@ func _send_one_frame() -> void:
 		if _output == null:
 			_status_label.text = "DeckLinkOutput class is not available"
 			return
-		_output.device_index = device_index
+		_output.device = device_index
 		_output.display_mode = mode
 		if not _output.open(device_index, mode):
 			_status_label.text = "Output failed"
@@ -329,13 +329,13 @@ func _create_pattern_image(width: int, height: int) -> Image:
 
 func _stop_input() -> void:
 	if _input != null:
-		_input.receiving = false
+		_input.enabled = false
 	if _input_button != null:
 		_input_button.text = "Start Input"
 
 func _stop_output() -> void:
 	if _output != null:
-		_output.sending = false
+		_output.enabled = false
 		_output.set_texture(null)
 	_output_pattern_texture = null
 	if _output_button != null:

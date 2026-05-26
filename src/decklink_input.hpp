@@ -27,13 +27,13 @@ public:
     ULONG AddRef() override;
     ULONG Release() override;
 
-    bool open(int p_device_index, int64_t p_display_mode = bmdModeHD1080p5994);
+    bool open(int p_device, int64_t p_display_mode = bmdModeHD1080p5994);
     void close();
     bool is_open() const;
-    bool is_receiving() const;
-    void set_receiving(bool p_receiving);
-    int get_device_index() const;
-    void set_device_index(int p_device_index);
+    bool is_enabled() const;
+    void set_enabled(bool p_enabled);
+    int get_device() const;
+    void set_device(int p_device);
     int64_t get_display_mode() const;
     void set_display_mode(int64_t p_display_mode);
     bool has_frame() const;
@@ -48,21 +48,21 @@ protected:
     static void _bind_methods();
 
 private:
-    void _restart_if_receiving();
+    void _restart_if_enabled();
     String _get_device_hint_string() const;
     String _get_display_mode_hint_string() const;
 
     SafeRefCount _ref_count;
-    IDeckLink *_device = nullptr;
+    IDeckLink *_decklink_device = nullptr;
     IDeckLinkInput *_decklink_input = nullptr;
-    int _device_index = 0;
+    int _device = 0;
     BMDDisplayMode _display_mode = bmdModeHD1080p5994;
     BMDPixelFormat _pixel_format = bmdFormat8BitYUV;
     BMDVideoInputFlags _input_flags = bmdVideoInputFlagDefault;
     int _width = 0;
     int _height = 0;
     bool _open = false;
-    bool _receiving = false;
+    bool _enabled = false;
     mutable Mutex *_frame_mutex = nullptr;
     PackedByteArray _latest_rgba;
     bool _has_frame = false;
