@@ -16,7 +16,6 @@ var _output_mode_select: OptionButton
 var _refresh_button: Button
 var _input_button: Button
 var _output_button: Button
-var _send_once_button: Button
 var _status_label: Label
 var _preview: TextureRect
 var _device_info: TextEdit
@@ -99,11 +98,6 @@ func _build_ui() -> void:
 	_output_button.text = "Start Output Pattern"
 	_output_button.pressed.connect(_toggle_output)
 	action_row.add_child(_output_button)
-
-	_send_once_button = Button.new()
-	_send_once_button.text = "Send One Frame"
-	_send_once_button.pressed.connect(_send_one_frame)
-	action_row.add_child(_send_once_button)
 
 	_status_label = Label.new()
 	_status_label.text = "Ready"
@@ -246,55 +240,6 @@ func _toggle_output() -> void:
 	else:
 		_status_label.text = "Output failed"
 
-func _send_one_frame() -> void:
-	if _input != null and _input.is_enabled():
-		_stop_input()
-
-	if _output == null or not _output.is_open():
-		var device_index := _selected_device_index()
-		var mode := _selected_mode(_output_mode_select)
-		if device_index < 0 or mode == 0:
-			_status_label.text = "Select an output device and mode"
-			return
-		if _output == null:
-			_status_label.text = "DeckLinkOutput class is not available"
-			return
-		_output.device = device_index
-		_output.display_mode = mode
-		if not _output.open(device_index, mode):
-			_status_label.text = "Output failed"
-			return
-		_output_button.text = "Stop Output Pattern"
-
-	_send_output_frame()
-	_status_label.text = "Sent one output frame"
-
-func _send_output_frame() -> void:
-	if _output == null or not _output.is_open():
-		return
-
-	var width: int = _output.get_width()
-	var height: int = _output.get_height()
-	if width <= 0 or height <= 0:
-		return
-
-	var data := PackedByteArray()
-	data.resize(width * height * 4)
-	var stripe_width: int = max(1, width / 8)
-	var offset: int = _output_frame % max(1, width)
-
-	for y in height:
-		for x in width:
-			var band := int((x + offset) / stripe_width) % 8
-			var base := (y * width + x) * 4
-			_write_pattern_rgba(data, base, band, x, y)
-			data[base + 3] = 255
-
-	var image := Image.create_from_data(width, height, false, Image.FORMAT_RGBA8, data)
-	if not _output.output_image(image):
-		_status_label.text = "Output frame failed"
-	_output_frame += 3
-
 func _update_output_pattern_texture() -> void:
 	if _output == null or not _output.is_open():
 		return
@@ -345,7 +290,6 @@ func _set_controls_enabled(enabled: bool) -> void:
 	_device_select.disabled = not enabled
 	_input_button.disabled = not enabled
 	_output_button.disabled = not enabled
-	_send_once_button.disabled = not enabled
 
 func _selected_device_index() -> int:
 	var selected := _device_select.selected

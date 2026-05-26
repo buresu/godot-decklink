@@ -1,5 +1,6 @@
 #include "decklink_output.hpp"
 
+#include <godot_cpp/classes/image.hpp>
 #include <godot_cpp/classes/rendering_server.hpp>
 #include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/core/class_db.hpp>
@@ -30,7 +31,6 @@ void DeckLinkOutput::_bind_methods() {
     ClassDB::bind_method(D_METHOD("open", "device", "display_mode"), &DeckLinkOutput::open, DEFVAL((int64_t)bmdModeHD1080p5994));
     ClassDB::bind_method(D_METHOD("close"), &DeckLinkOutput::close);
     ClassDB::bind_method(D_METHOD("is_open"), &DeckLinkOutput::is_open);
-    ClassDB::bind_method(D_METHOD("output_image", "image"), &DeckLinkOutput::output_image);
     ClassDB::bind_method(D_METHOD("get_texture"), &DeckLinkOutput::get_texture);
     ClassDB::bind_method(D_METHOD("set_texture", "texture"), &DeckLinkOutput::set_texture);
     ClassDB::bind_method(D_METHOD("is_enabled"), &DeckLinkOutput::is_enabled);
@@ -203,12 +203,17 @@ int DeckLinkOutput::get_height() const {
     return _height;
 }
 
-bool DeckLinkOutput::output_image(const Ref<Image> &p_image) {
-    if (!_open || !_output || p_image.is_null()) {
+bool DeckLinkOutput::_output_texture() {
+    if (!_open || !_output || _texture.is_null()) {
         return false;
     }
 
-    Ref<Image> image = p_image->duplicate();
+    Ref<Image> texture_image = _texture->get_image();
+    if (texture_image.is_null()) {
+        return false;
+    }
+
+    Ref<Image> image = texture_image->duplicate();
     if (image->get_width() != _width || image->get_height() != _height) {
         image->resize(_width, _height);
     }
@@ -269,19 +274,6 @@ bool DeckLinkOutput::output_image(const Ref<Image> &p_image) {
     buffer->Release();
     frame->Release();
     return ok;
-}
-
-bool DeckLinkOutput::_output_texture() {
-    if (_texture.is_null()) {
-        return false;
-    }
-
-    Ref<Image> image = _texture->get_image();
-    if (image.is_null()) {
-        return false;
-    }
-
-    return output_image(image);
 }
 
 Ref<Texture2D> DeckLinkOutput::get_texture() const {

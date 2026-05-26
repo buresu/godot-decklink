@@ -1,6 +1,5 @@
 #pragma once
 
-#include <godot_cpp/classes/image.hpp>
 #include <godot_cpp/classes/node.hpp>
 #include <godot_cpp/classes/texture2d.hpp>
 #include <godot_cpp/core/property_info.hpp>
@@ -35,7 +34,6 @@ public:
     bool open(int p_device, int64_t p_display_mode = bmdModeHD1080p5994);
     void close();
     bool is_open() const;
-    bool output_image(const Ref<Image> &p_image);
     Ref<Texture2D> get_texture() const;
     void set_texture(Ref<Texture2D> p_texture);
     bool is_enabled() const;
