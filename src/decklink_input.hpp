@@ -1,6 +1,7 @@
 #pragma once
 
 #include <godot_cpp/classes/image.hpp>
+#include <godot_cpp/classes/image_texture.hpp>
 #include <godot_cpp/classes/mutex.hpp>
 #include <godot_cpp/classes/node.hpp>
 #include <godot_cpp/core/property_info.hpp>
@@ -20,6 +21,7 @@ public:
     ~DeckLinkInput() override;
 
     void _ready() override;
+    void _process(double p_delta) override;
     void _exit_tree() override;
     void _validate_property(PropertyInfo &p_property) const;
 
@@ -36,8 +38,9 @@ public:
     void set_device(int p_device);
     int64_t get_display_mode() const;
     void set_display_mode(int64_t p_display_mode);
+    Ref<ImageTexture> get_texture() const;
+    void set_texture(Ref<ImageTexture> p_texture);
     bool has_frame() const;
-    Ref<Image> get_image() const;
     int get_width() const;
     int get_height() const;
 
@@ -48,6 +51,7 @@ protected:
     static void _bind_methods();
 
 private:
+    void _update_texture();
     void _restart_if_enabled();
     String _get_device_hint_string() const;
     String _get_display_mode_hint_string() const;
@@ -65,7 +69,9 @@ private:
     bool _enabled = false;
     mutable Mutex *_frame_mutex = nullptr;
     PackedByteArray _latest_rgba;
+    Ref<ImageTexture> _texture;
     bool _has_frame = false;
+    bool _texture_dirty = false;
 };
 
 } // namespace godot

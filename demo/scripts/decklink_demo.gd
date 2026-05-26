@@ -33,15 +33,6 @@ func _exit_tree() -> void:
 	_stop_output()
 
 func _process(delta: float) -> void:
-	if _input != null and _input.is_open() and _input.has_frame():
-		var image = _input.get_image()
-		if image != null:
-			if _preview_texture == null:
-				_preview_texture = ImageTexture.create_from_image(image)
-				_preview.texture = _preview_texture
-			else:
-				_preview_texture.update(image)
-
 	if _output != null and _output.is_enabled():
 		_output_time += delta
 		var interval := 1.0 / OUTPUT_FPS
@@ -124,6 +115,8 @@ func _refresh_devices() -> void:
 	_stop_output()
 	_preview.texture = null
 	_preview_texture = null
+	if _input != null:
+		_input.set_texture(null)
 	_output_pattern_texture = null
 
 	_device_select.clear()
@@ -202,6 +195,9 @@ func _toggle_input() -> void:
 	if _input == null:
 		_status_label.text = "DeckLinkInput class is not available"
 		return
+	_preview_texture = ImageTexture.new()
+	_preview.texture = _preview_texture
+	_input.set_texture(_preview_texture)
 	_input.device = device_index
 	_input.display_mode = mode
 	_input.enabled = true
@@ -209,6 +205,9 @@ func _toggle_input() -> void:
 		_input_button.text = "Stop Input"
 		_status_label.text = "Input started"
 	else:
+		_preview.texture = null
+		_preview_texture = null
+		_input.set_texture(null)
 		_status_label.text = "Input failed"
 
 func _toggle_output() -> void:
@@ -275,6 +274,7 @@ func _create_pattern_image(width: int, height: int) -> Image:
 func _stop_input() -> void:
 	if _input != null:
 		_input.enabled = false
+		_input.set_texture(null)
 	if _input_button != null:
 		_input_button.text = "Start Input"
 

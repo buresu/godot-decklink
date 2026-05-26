@@ -77,8 +77,9 @@ void DeckLinkInput::_bind_methods() {
     ClassDB::bind_method(D_METHOD("set_device", "device"), &DeckLinkInput::set_device);
     ClassDB::bind_method(D_METHOD("get_display_mode"), &DeckLinkInput::get_display_mode);
     ClassDB::bind_method(D_METHOD("set_display_mode", "display_mode"), &DeckLinkInput::set_display_mode);
+    ClassDB::bind_method(D_METHOD("get_texture"), &DeckLinkInput::get_texture);
+    ClassDB::bind_method(D_METHOD("set_texture", "texture"), &DeckLinkInput::set_texture);
     ClassDB::bind_method(D_METHOD("has_frame"), &DeckLinkInput::has_frame);
-    ClassDB::bind_method(D_METHOD("get_image"), &DeckLinkInput::get_image);
     ClassDB::bind_method(D_METHOD("get_width"), &DeckLinkInput::get_width);
     ClassDB::bind_method(D_METHOD("get_height"), &DeckLinkInput::get_height);
 
@@ -91,6 +92,9 @@ void DeckLinkInput::_bind_methods() {
     ClassDB::add_property("DeckLinkInput",
             { Variant::INT, "display_mode", PROPERTY_HINT_ENUM },
             "set_display_mode", "get_display_mode");
+    ClassDB::add_property("DeckLinkInput",
+            { Variant::OBJECT, "texture", PROPERTY_HINT_RESOURCE_TYPE, "ImageTexture" },
+            "set_texture", "get_texture");
 }
 
 HRESULT DeckLinkInput::QueryInterface(REFIID p_iid, LPVOID *r_ppv) {
@@ -115,9 +119,15 @@ ULONG DeckLinkInput::Release() {
 }
 
 void DeckLinkInput::_ready() {
+    set_process(true);
     if (_enabled) {
         set_enabled(true);
     }
+}
+
+void DeckLinkInput::_process(double p_delta) {
+    (void)p_delta;
+    _update_texture();
 }
 
 void DeckLinkInput::_exit_tree() {
@@ -199,6 +209,7 @@ bool DeckLinkInput::open(int p_device, int64_t p_display_mode) {
         MutexLock lock(*_frame_mutex);
         _latest_rgba.resize(_width * _height * 4);
         _has_frame = false;
+        _texture_dirty = false;
     }
 
     HRESULT result = _decklink_input->SetCallback(this);
@@ -243,6 +254,7 @@ void DeckLinkInput::close() {
     MutexLock lock(*_frame_mutex);
     _latest_rgba.clear();
     _has_frame = false;
+    _texture_dirty = false;
     _open = false;
     _enabled = false;
     _width = 0;
@@ -296,17 +308,21 @@ void DeckLinkInput::set_display_mode(int64_t p_display_mode) {
     _restart_if_enabled();
 }
 
+Ref<ImageTexture> DeckLinkInput::get_texture() const {
+    return _texture;
+}
+
+void DeckLinkInput::set_texture(Ref<ImageTexture> p_texture) {
+    _texture = p_texture;
+    MutexLock lock(*_frame_mutex);
+    if (!_texture.is_null() && _has_frame) {
+        _texture_dirty = true;
+    }
+}
+
 bool DeckLinkInput::has_frame() const {
     MutexLock lock(*_frame_mutex);
     return _has_frame;
-}
-
-Ref<Image> DeckLinkInput::get_image() const {
-    MutexLock lock(*_frame_mutex);
-    if (!_has_frame || _latest_rgba.is_empty()) {
-        return Ref<Image>();
-    }
-    return Image::create_from_data(_width, _height, false, Image::FORMAT_RGBA8, _latest_rgba);
 }
 
 int DeckLinkInput::get_width() const {
@@ -332,6 +348,7 @@ HRESULT DeckLinkInput::VideoInputFormatChanged(BMDVideoInputFormatChangedEvents 
             MutexLock lock(*_frame_mutex);
             _latest_rgba.resize(_width * _height * 4);
             _has_frame = false;
+            _texture_dirty = false;
         }
         _decklink_input->EnableVideoInput(_display_mode, _pixel_format, _input_flags);
         return _decklink_input->StartStreams();
@@ -411,6 +428,41 @@ String DeckLinkInput::_get_display_mode_hint_string() const {
     return hint;
 }
 
+void DeckLinkInput::_update_texture() {
+    if (_texture.is_null()) {
+        return;
+    }
+
+    PackedByteArray rgba;
+    int width = 0;
+    int height = 0;
+    {
+        MutexLock lock(*_frame_mutex);
+        if (!_texture_dirty || !_has_frame || _latest_rgba.is_empty()) {
+            return;
+        }
+        rgba = _latest_rgba;
+        width = _width;
+        height = _height;
+        _texture_dirty = false;
+    }
+
+    if (width <= 0 || height <= 0) {
+        return;
+    }
+
+    Ref<Image> image = Image::create_from_data(width, height, false, Image::FORMAT_RGBA8, rgba);
+    if (image.is_null()) {
+        return;
+    }
+
+    if (_texture->get_width() != width || _texture->get_height() != height || _texture->get_format() != Image::FORMAT_RGBA8) {
+        _texture->set_image(image);
+    } else {
+        _texture->update(image);
+    }
+}
+
 HRESULT DeckLinkInput::VideoInputFrameArrived(IDeckLinkVideoInputFrame *p_video_frame, IDeckLinkAudioInputPacket *p_audio_packet) {
     if (!p_video_frame || (p_video_frame->GetFlags() & bmdFrameHasNoInputSource)) {
         return S_OK;
@@ -423,6 +475,7 @@ HRESULT DeckLinkInput::VideoInputFrameArrived(IDeckLinkVideoInputFrame *p_video_
         _height = p_video_frame->GetHeight();
         _latest_rgba = rgba;
         _has_frame = true;
+        _texture_dirty = true;
     } else {
         UtilityFunctions::printerr("[DeckLinkInput] Could not convert frame to RGBA: pixel_format=", (int64_t)p_video_frame->GetPixelFormat());
     }
