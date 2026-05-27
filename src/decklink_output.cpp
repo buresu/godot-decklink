@@ -133,8 +133,8 @@ bool DeckLinkOutput::open(int p_device, int64_t p_display_mode) {
         return false;
     }
 
-    bool supported_bgra = false;
-    bool supported_yuv = false;
+    decklink::Bool supported_bgra = false;
+    decklink::Bool supported_yuv = false;
     BMDDisplayMode actual_mode = bmdModeUnknown;
     if (_output_format == OUTPUT_FORMAT_AUTO || _output_format == OUTPUT_FORMAT_BGRA) {
         _output->DoesSupportVideoMode(_connection, _display_mode, bmdFormat8BitBGRA, bmdNoVideoOutputConversion, bmdSupportedVideoModeDefault, &actual_mode, &supported_bgra);

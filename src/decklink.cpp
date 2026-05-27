@@ -37,7 +37,7 @@ void DeckLink::_clear_devices() {
 void DeckLink::refresh() {
     _clear_devices();
 
-    IDeckLinkIterator *iterator = CreateDeckLinkIteratorInstance();
+    IDeckLinkIterator *iterator = decklink::create_iterator();
     if (!iterator) {
         UtilityFunctions::printerr("[DeckLink] Could not create DeckLink iterator. Is Blackmagic Desktop Video installed?");
         return;

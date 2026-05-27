@@ -33,7 +33,7 @@ public:
     int size() const;
 
 protected:
-    ~DeckLinkVideoFrame() override = default;
+    ~DeckLinkVideoFrame() = default;
 
 private:
     SafeRefCount _ref_count;

@@ -101,7 +101,7 @@ Array DeckLinkDevice::_get_display_modes(bool p_output) const {
 
     IDeckLinkDisplayMode *display_mode = nullptr;
     while (iterator->Next(&display_mode) == S_OK) {
-        const char *name = nullptr;
+        decklink::String name = nullptr;
         BMDTimeValue frame_duration = 0;
         BMDTimeScale time_scale = 0;
 
@@ -111,7 +111,7 @@ Array DeckLinkDevice::_get_display_modes(bool p_output) const {
         mode["height"] = display_mode->GetHeight();
 
         if (display_mode->GetName(&name) == S_OK && name) {
-            mode["name"] = String::utf8(name);
+            mode["name"] = decklink::string_to_godot(name);
             decklink::release_string(name);
         } else {
             mode["name"] = String();
@@ -137,9 +137,9 @@ String DeckLinkDevice::_read_model_name() const {
         return String();
     }
 
-    const char *model_name = nullptr;
+    decklink::String model_name = nullptr;
     if (_device->GetModelName(&model_name) == S_OK && model_name) {
-        const String result = String::utf8(model_name);
+        const String result = decklink::string_to_godot(model_name);
         decklink::release_string(model_name);
         return result;
     }
@@ -151,9 +151,9 @@ String DeckLinkDevice::_read_display_name() const {
         return String();
     }
 
-    const char *display_name = nullptr;
+    decklink::String display_name = nullptr;
     if (_device->GetDisplayName(&display_name) == S_OK && display_name) {
-        const String result = String::utf8(display_name);
+        const String result = decklink::string_to_godot(display_name);
         decklink::release_string(display_name);
         return result;
     }

@@ -170,15 +170,15 @@ bool DeckLinkInput::open(int p_device, int64_t p_display_mode) {
 
     IDeckLinkProfileAttributes *attributes = nullptr;
     if (_decklink_device->query_attributes(&attributes)) {
-        bool supports_format_detection = false;
+        decklink::Bool supports_format_detection = false;
         if (attributes->GetFlag(BMDDeckLinkSupportsInputFormatDetection, &supports_format_detection) == S_OK && supports_format_detection) {
             _input_flags = bmdVideoInputEnableFormatDetection;
         }
         attributes->Release();
     }
 
-    bool supported_bgra = false;
-    bool supported_yuv = false;
+    decklink::Bool supported_bgra = false;
+    decklink::Bool supported_yuv = false;
     BMDDisplayMode actual_mode = bmdModeUnknown;
     _decklink_input->DoesSupportVideoMode(bmdVideoConnectionUnspecified, _display_mode, bmdFormat8BitBGRA, bmdNoVideoInputConversion, bmdSupportedVideoModeDefault, &actual_mode, &supported_bgra);
     if (!supported_bgra) {
