@@ -34,7 +34,26 @@ endif()
 
 if(DECKLINK_FOUND)
     if(WIN32)
-        find_program(MIDL_EXECUTABLE midl REQUIRED)
+        set(_DECKLINK_MIDL_SEARCH_ROOTS)
+        foreach(_DECKLINK_WINDOWS_KITS_ROOT
+                "$ENV{ProgramFiles\(x86\)}/Windows Kits/10/bin"
+                "$ENV{ProgramFiles}/Windows Kits/10/bin")
+            if(IS_DIRECTORY "${_DECKLINK_WINDOWS_KITS_ROOT}")
+                file(GLOB _DECKLINK_WINDOWS_KITS_VERSION_DIRS
+                    LIST_DIRECTORIES TRUE
+                    "${_DECKLINK_WINDOWS_KITS_ROOT}/10.*")
+                list(APPEND _DECKLINK_MIDL_SEARCH_ROOTS
+                    ${_DECKLINK_WINDOWS_KITS_VERSION_DIRS}
+                    "${_DECKLINK_WINDOWS_KITS_ROOT}")
+            endif()
+        endforeach()
+
+        find_program(MIDL_EXECUTABLE
+            NAMES midl
+            HINTS ${_DECKLINK_MIDL_SEARCH_ROOTS}
+            PATH_SUFFIXES x64 x86 arm64
+            DOC "Microsoft Interface Definition Language compiler"
+        )
 
         set(DECKLINK_MIDL_HEADER "${CMAKE_CURRENT_BINARY_DIR}/DeckLinkAPI.h")
         set(DECKLINK_MIDL_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/DeckLinkAPI_i.c")
