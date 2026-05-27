@@ -13,30 +13,30 @@
 namespace godot {
 
 class DeckLink : public Object {
-    GDCLASS(DeckLink, Object)
+  GDCLASS(DeckLink, Object)
 
 public:
-    static DeckLink *get_singleton();
+  static DeckLink *get_singleton();
 
-    DeckLink();
-    ~DeckLink() override;
+  DeckLink();
+  ~DeckLink() override;
 
-    int get_device_count() const;
-    Array get_devices() const;
-    Array get_output_display_modes(int p_device_index) const;
-    Array get_input_display_modes(int p_device_index) const;
-    void refresh();
+  int get_device_count() const;
+  Array get_devices() const;
+  Array get_output_display_modes(int p_device_index) const;
+  Array get_input_display_modes(int p_device_index) const;
+  void refresh();
 
-    Ref<DeckLinkDevice> get_device(int p_index) const;
+  Ref<DeckLinkDevice> get_device(int p_index) const;
 
 protected:
-    static void _bind_methods();
+  static void _bind_methods();
 
 private:
-    static DeckLink *_singleton;
-    Vector<Ref<DeckLinkDevice>> _devices;
+  static DeckLink *_singleton;
+  Vector<Ref<DeckLinkDevice>> _devices;
 
-    void _clear_devices();
+  void _clear_devices();
 };
 
 } // namespace godot
