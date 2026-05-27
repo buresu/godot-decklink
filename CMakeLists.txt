@@ -50,12 +50,6 @@ target_include_directories(GodotDeckLink PRIVATE
 )
 
 target_link_libraries(GodotDeckLink PRIVATE godot::cpp yuv ${DECKLINK_LIBS})
-if(UNIX AND NOT APPLE)
-    target_link_libraries(GodotDeckLink PRIVATE dl pthread)
-endif()
-if(WIN32)
-    target_link_libraries(GodotDeckLink PRIVATE ole32)
-endif()
 
 set_target_properties(GodotDeckLink PROPERTIES
     SKIP_RPATH TRUE

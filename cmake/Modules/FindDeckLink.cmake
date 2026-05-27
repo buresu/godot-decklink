@@ -80,6 +80,20 @@ if(DECKLINK_FOUND)
         set_target_properties(DeckLink PROPERTIES POSITION_INDEPENDENT_CODE ON)
         if(WIN32)
             set_target_properties(DeckLink PROPERTIES LINKER_LANGUAGE C)
+            target_link_libraries(DeckLink PUBLIC ole32 oleaut32)
+        elseif(APPLE)
+            find_package(Threads REQUIRED)
+            find_library(DECKLINK_COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
+            target_link_libraries(DeckLink PUBLIC
+                Threads::Threads
+                "${DECKLINK_COREFOUNDATION_FRAMEWORK}"
+            )
+        elseif(UNIX)
+            find_package(Threads REQUIRED)
+            target_link_libraries(DeckLink PUBLIC
+                Threads::Threads
+                ${CMAKE_DL_LIBS}
+            )
         endif()
     endif()
 
