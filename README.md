@@ -1,9 +1,18 @@
 # godot-decklink
 Godot DeckLink Addon via GDExtension
 
+## Install the Desktop Video
+Please download and install the driver from the following website.  
+https://www.blackmagicdesign.com/jp/developer/products/capture-and-playback/sdk-and-software  
+
+On Linux, you need to enable the DesktopVideoHelper service.  
+```
+sudo systemctl enable --now DesktopVideoHelper
+```
+
 ## Build
-Download and unzip Desktop Video SDK.  
-https://www.blackmagicdesign.com/jp/developer/products/capture-and-playback/sdk-and-software
+Download and unzip the Desktop Video SDK.  
+https://www.blackmagicdesign.com/jp/developer/products/capture-and-playback/sdk-and-software  
 
 ```
 git clone --recursive https://github.com/buresu/godot-decklink.git
