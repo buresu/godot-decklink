@@ -6,12 +6,14 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Build type" FORCE)
 endif()
 
+list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/Modules")
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/Modules")
 
 if(CMAKE_GENERATOR_PLATFORM MATCHES "arm64|aarch64|ARM64" OR CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
     set(ARCH "arm64")
@@ -21,18 +23,13 @@ else()
     set(ARCH "x86_32")
 endif()
 
-set(GODOT_CPP_PATH "${PROJECT_SOURCE_DIR}/lib/godot-cpp")
-if(NOT EXISTS "${GODOT_CPP_PATH}/CMakeLists.txt")
-    message(FATAL_ERROR "godot-cpp submodule not found. Run: git submodule update --init --recursive")
-endif()
+# godot-cpp
 add_subdirectory("${GODOT_CPP_PATH}" "${CMAKE_BINARY_DIR}/godot-cpp")
 
-set(LIBYUV_PATH "${PROJECT_SOURCE_DIR}/lib/libyuv")
-if(NOT EXISTS "${LIBYUV_PATH}/CMakeLists.txt")
-    message(FATAL_ERROR "libyuv submodule not found. Run: git submodule update --init --recursive")
-endif()
+# libyuv
 add_subdirectory("${LIBYUV_PATH}" "${CMAKE_BINARY_DIR}/libyuv" EXCLUDE_FROM_ALL)
 
+# DeckLink
 find_package(DeckLink REQUIRED)
 
 file(GLOB_RECURSE INCLUDES CONFIGURE_DEPENDS "src/*.hpp")
@@ -46,10 +43,10 @@ set_target_properties(GodotDeckLink PROPERTIES
 )
 
 target_include_directories(GodotDeckLink PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src"
-    "${LIBYUV_PATH}/include"
-    ${DECKLINK_INCLUDE_DIRS}
     "${CMAKE_CURRENT_BINARY_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${PROJECT_SOURCE_DIR}/lib/libyuv/include"
+    "${DECKLINK_INCLUDE_DIRS}"
 )
 
 target_link_libraries(GodotDeckLink PRIVATE godot::cpp yuv ${DECKLINK_LIBS})
