@@ -2,7 +2,7 @@
 Godot DeckLink Addon via GDExtension
 
 ## Build
-Download and unzip Desktop Video SDK.
+Download and unzip Desktop Video SDK.  
 https://www.blackmagicdesign.com/jp/developer/products/capture-and-playback/sdk-and-software
 
 ```
