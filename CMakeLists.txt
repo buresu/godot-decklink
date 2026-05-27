@@ -24,10 +24,10 @@ else()
 endif()
 
 # godot-cpp
-add_subdirectory("${GODOT_CPP_PATH}" "${CMAKE_BINARY_DIR}/godot-cpp")
+add_subdirectory("${PROJECT_SOURCE_DIR}/lib/godot-cpp")
 
 # libyuv
-add_subdirectory("${LIBYUV_PATH}" "${CMAKE_BINARY_DIR}/libyuv" EXCLUDE_FROM_ALL)
+add_subdirectory("${PROJECT_SOURCE_DIR}/lib/libyuv" EXCLUDE_FROM_ALL)
 
 # DeckLink
 find_package(DeckLink REQUIRED)
