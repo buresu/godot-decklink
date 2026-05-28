@@ -18,7 +18,7 @@ HRESULT DeckLinkVideoFrame::QueryInterface(REFIID p_iid, LPVOID *r_ppv) {
   if (!r_ppv) {
     return E_INVALIDARG;
   }
-  if (decklink::iid_equal(p_iid, IID_IUnknown)) {
+  if (decklink::iid_equal(p_iid, decklink::iid_unknown())) {
     *r_ppv = static_cast<IDeckLinkVideoFrame *>(this);
   } else if (decklink::iid_equal(p_iid, IID_IDeckLinkVideoFrame)) {
     *r_ppv = static_cast<IDeckLinkVideoFrame *>(this);

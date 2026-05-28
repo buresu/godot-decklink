@@ -111,6 +111,14 @@ inline bool iid_equal(REFIID p_a, REFIID p_b) {
   return memcmp(&p_a, &p_b, sizeof(p_a)) == 0;
 }
 
+inline REFIID iid_unknown() {
+#if defined(__APPLE__)
+  return IUnknownUUID;
+#else
+  return IID_IUnknown;
+#endif
+}
+
 inline const char *hresult_name(HRESULT p_result) {
   switch (p_result) {
   case S_OK:
