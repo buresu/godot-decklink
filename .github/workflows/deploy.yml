@@ -31,14 +31,14 @@ jobs:
           - os: windows
             arch: arm64
             config: Debug
-            runner: windows-latest
-            cmake_args: -A ARM64
+            runner: windows-11-arm
+            cmake_args: ''
             ext: dll
           - os: windows
             arch: arm64
             config: Release
-            runner: windows-latest
-            cmake_args: -A ARM64
+            runner: windows-11-arm
+            cmake_args: ''
             ext: dll
           - os: macos
             arch: x86_64
