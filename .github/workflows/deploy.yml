@@ -43,13 +43,13 @@ jobs:
           - os: macos
             arch: x86_64
             config: Debug
-            runner: macos-13
+            runner: macos-15-intel
             cmake_args: ''
             ext: dylib
           - os: macos
             arch: x86_64
             config: Release
-            runner: macos-13
+            runner: macos-15-intel
             cmake_args: ''
             ext: dylib
           - os: macos
