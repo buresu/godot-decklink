@@ -113,7 +113,7 @@ inline bool iid_equal(REFIID p_a, REFIID p_b) {
 
 inline REFIID iid_unknown() {
 #if defined(__APPLE__)
-  return IUnknownUUID;
+  return CFUUIDGetUUIDBytes(IUnknownUUID);
 #else
   return IID_IUnknown;
 #endif
