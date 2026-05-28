@@ -113,8 +113,8 @@ Array DeckLinkDevice::_get_display_modes(bool p_output) const {
 
     Dictionary mode;
     mode["id"] = (int64_t)display_mode->GetDisplayMode();
-    mode["width"] = display_mode->GetWidth();
-    mode["height"] = display_mode->GetHeight();
+    mode["width"] = (int64_t)display_mode->GetWidth();
+    mode["height"] = (int64_t)display_mode->GetHeight();
 
     if (display_mode->GetName(&name) == S_OK && name) {
       mode["name"] = decklink::string_to_godot(name);

@@ -1,11 +1,16 @@
 #pragma once
 
+#if defined(__APPLE__)
+#include <CoreFoundation/CoreFoundation.h>
+#endif
+
 #include <DeckLinkAPI.h>
 
 #include <godot_cpp/variant/string.hpp>
 
 #include <stdlib.h>
 #include <string.h>
+#include <vector>
 
 namespace godot {
 namespace decklink {
@@ -42,6 +47,39 @@ inline IDeckLinkIterator *create_iterator() {
     return nullptr;
   }
   return iterator;
+}
+#elif defined(__APPLE__)
+using String = CFStringRef;
+using Bool = bool;
+
+inline ::godot::String string_to_godot(String p_string) {
+  if (!p_string) {
+    return ::godot::String();
+  }
+
+  const CFIndex length = CFStringGetLength(p_string);
+  const CFIndex max_size =
+      CFStringGetMaximumSizeForEncoding(length, kCFStringEncodingUTF8) + 1;
+  if (max_size <= 0) {
+    return ::godot::String();
+  }
+
+  std::vector<char> buffer((size_t)max_size);
+  if (!CFStringGetCString(p_string, buffer.data(), max_size,
+                          kCFStringEncodingUTF8)) {
+    return ::godot::String();
+  }
+  return ::godot::String::utf8(buffer.data());
+}
+
+inline void release_string(String p_string) {
+  if (p_string) {
+    CFRelease(p_string);
+  }
+}
+
+inline IDeckLinkIterator *create_iterator() {
+  return CreateDeckLinkIteratorInstance();
 }
 #else
 using String = const char *;
