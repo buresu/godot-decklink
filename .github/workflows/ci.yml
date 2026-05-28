@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   DECKLINK_SDK_REPOSITORY: https://gitlab.com/buresu/BlackmagicDeckLinkSDK.git
 
